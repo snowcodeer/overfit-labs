@@ -51,13 +51,18 @@ class VideoWriter:
     def __init__(self, output_path: str, fps: float, width: int, height: int):
         self.width = width
         self.height = height
-        # 'avc1' (H.264) is generally more compatible than 'mp4v'
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
+        # Try mp4v first as it's more stable on some Windows setups
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         self.writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         
-        # Fallback if avc1 is not available
+        # Fallback to avc1 if mp4v is not available
         if not self.writer.isOpened():
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            fourcc = cv2.VideoWriter_fourcc(*'avc1')
+            self.writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        
+        # Final fallback to XVID
+        if not self.writer.isOpened():
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
             self.writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
     def write_frame(self, frame: np.ndarray):

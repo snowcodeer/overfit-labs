@@ -1,65 +1,65 @@
+import os
 import gymnasium as gym
 import gymnasium_robotics
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv
-from vidreward.training.env_wrapper import AdroitRewardWrapper
-from vidreward.rewards.pipeline import create_default_reward_function
-import os
+from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from vidreward.training.env_wrapper import VidRewardWrapper
+from vidreward.training.curriculum import PhaseLockCallback
 
-from stable_baselines3.common.callbacks import BaseCallback
-from vidreward.training.curriculum import PhaseCurriculum, DEFAULT_CURRICULUM
-
-class CurriculumCallback(BaseCallback):
-    """
-    Callback for updating curriculum based on periodic evaluations.
-    """
-    def __init__(self, curriculum: PhaseCurriculum, verbose=0):
-        super().__init__(verbose)
-        self.curriculum = curriculum
-
-    def _on_step(self) -> bool:
-        # Periodically update weights in the environment
-        if self.n_calls % 1000 == 0:
-            weights = self.curriculum.get_current_weights()
-            if weights != "DEFAULT":
-                # Assuming single vec env for simplicity
-                self.training_env.env_method("set_weights", weights)
-        return True
-
-def train_adroit(video_path: str, env_id: str = "AdroitHandDoor-v1", total_timesteps: int = 1000000):
-    # 1. Setup Mock Centroids
-    mock_centroids = np.zeros((2000, 2)) + 0.5 
+def train():
+    # 1. Setup Environment
+    env_id = "AdroitHandRelocate-v1" 
     
-    # 2. Create Reward Function
-    reward_fn = create_default_reward_function(video_path, mock_centroids)
-    
-    # 3. Setup Curriculum
-    curriculum = PhaseCurriculum(DEFAULT_CURRICULUM)
-    
-    # 4. Setup Environment
     def make_env():
         env = gym.make(env_id)
-        env = AdroitRewardWrapper(env, reward_fn)
+        # Apply our reward wrapper
+        env = VidRewardWrapper(env)
         return env
-    
+
     env = DummyVecEnv([make_env])
+    # Normalize observations and rewards for better RL convergence
+    env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.)
+
+    # 2. Setup PPO Model
+    # High-dimensional control usually benefits from a larger architecture
+    policy_kwargs = dict(net_arch=[dict(pi=[256, 256, 256], vf=[256, 256, 256])])
     
-    # 5. Initialize Model
-    model = PPO("MlpPolicy", env, verbose=1)
-    
-    # 6. Train with Callback
-    callback = CurriculumCallback(curriculum)
-    model.learn(total_timesteps=total_timesteps, callback=callback)
-    
-    # 6. Save
-    model_path = f"ppo_{env_id}_vidreward.zip"
-    model.save(model_path)
-    print(f"Model saved to {model_path}")
+    model = PPO(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        learning_rate=3e-4,
+        n_steps=2048,
+        batch_size=64,
+        n_epochs=10,
+        gamma=0.99,
+        gae_lambda=0.95,
+        clip_range=0.2,
+        ent_coef=0.01,
+        policy_kwargs=policy_kwargs,
+        tensorboard_log="./tensorboard_logs/"
+    )
+
+    # 3. Callbacks
+    checkpoint_callback = CheckpointCallback(
+        save_freq=10000,
+        save_path="./checkpoints/",
+        name_prefix="vidreward_adroit"
+    )
+    curriculum_callback = PhaseLockCallback(verbose=1)
+
+    # 4. Train
+    print(f"Starting training on {env_id} with VidReward and Curriculum...")
+    model.learn(
+        total_timesteps=1000000,
+        callback=[checkpoint_callback, curriculum_callback],
+        progress_bar=True
+    )
+
+    # 5. Save final model
+    model.save("vidreward_adroit_final")
+    print("Training complete!")
 
 if __name__ == "__main__":
-    import numpy as np
-    video = "data/pick-rubiks-cube.mp4"
-    if os.path.exists(video):
-        train_adroit(video)
-    else:
-        print("Provide a valid video path for reward generation.")
+    train()

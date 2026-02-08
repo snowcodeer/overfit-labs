@@ -101,5 +101,34 @@ class MediaPipeTracker:
             confidences=np.array(confidences_list)
         )
 
+    def process_frames(self, frames: List[np.ndarray], fps: float = 30.0) -> HandTrajectory:
+        """
+        Processes a list of BGR frames and returns a HandTrajectory.
+        """
+        landmarks_list = []
+        confidences_list = []
+
+        for frame_idx, frame in enumerate(frames):
+            timestamp_ms = int(1000 * frame_idx / fps)
+
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+
+            result = self.landmarker.detect_for_video(mp_image, timestamp_ms)
+
+            if result.hand_landmarks:
+                lms = np.array([[lm.x, lm.y, lm.z] for lm in result.hand_landmarks[0]])
+                conf = result.handedness[0][0].score
+                landmarks_list.append(lms)
+                confidences_list.append(conf)
+            else:
+                landmarks_list.append(np.zeros((21, 3)))
+                confidences_list.append(0.0)
+
+        return HandTrajectory(
+            landmarks=np.array(landmarks_list),
+            confidences=np.array(confidences_list)
+        )
+
     def close(self):
         self.landmarker.close()
