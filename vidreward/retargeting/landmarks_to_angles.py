@@ -3,7 +3,10 @@ from typing import Dict
 
 def unit_vector(vector):
     """Returns the unit vector of the vector."""
-    return vector / np.linalg.norm(vector)
+    norm = np.linalg.norm(vector)
+    if norm < 1e-6:
+        return vector
+    return vector / norm
 
 def angle_between(v1, v2):
     """Returns the angle in radians between vectors 'v1' and 'v2'."""
@@ -63,17 +66,60 @@ class AdroitRetargeter:
         get_finger_angles(RING_MCP, RING_PIP, RING_DIP, RING_TIP, "RF")
         get_finger_angles(PINKY_MCP, PINKY_PIP, PINKY_DIP, PINKY_TIP, "LF")
         
-        # Thumb (Adroit has 5 joints: THJ0-THJ4)
-        # Simplify: Map IP to J0, MCP to J1, CMC to J2
+        # Thumb - compute same way as other fingers
+        # MediaPipe: THUMB_CMC(1) -> THUMB_MCP(2) -> THUMB_IP(3) -> THUMB_TIP(4)
+        # Maps to Adroit: THJ2 (CMC) -> THJ1 (MCP) -> THJ0 (IP)
+
+        v_wrist_cmc = landmarks[THUMB_CMC] - landmarks[WRIST]
         v_cmc_mcp = landmarks[THUMB_MCP] - landmarks[THUMB_CMC]
         v_mcp_ip = landmarks[THUMB_IP] - landmarks[THUMB_MCP]
         v_ip_tip = landmarks[THUMB_TIP] - landmarks[THUMB_IP]
-        
-        angles["THJ0"] = angle_between(v_mcp_ip, v_ip_tip) # IP Flexion
-        angles["THJ1"] = angle_between(v_cmc_mcp, v_mcp_ip) # MCP Flexion
-        angles["THJ2"] = angle_between(landmarks[THUMB_CMC] - landmarks[WRIST], v_cmc_mcp) # CMC Flexion
-        angles["THJ3"] = 0.0 # Abduction
-        angles["THJ4"] = 0.0 # Opposition
+
+        # Thumb joint mapping (from docs):
+        # THJ4: CMC horizontal, THJ3: CMC vertical, THJ2: MCP abduction
+        # THJ1: MCP flexion, THJ0: IP flexion
+
+        # Compute flexion angles same as other fingers
+        thj1_raw = angle_between(v_cmc_mcp, v_mcp_ip)   # MCP flexion
+        thj0_raw = angle_between(v_mcp_ip, v_ip_tip)    # IP flexion
+
+        # Based on Adroit documentation angle ranges:
+        # THJ0: -1.571 to 0 (negative = flexion)
+        # THJ1: -0.52 to 0.52
+        # THJ2: -0.262 to 0.262
+        # THJ3: 0 to 1.3 (POSITIVE only)
+        # THJ4: -1.047 to 1.047
+
+        # THJ0: IP flexion - negative values (range -1.571 to 0)
+        angles["THJ0"] = np.clip(-thj0_raw, -1.571, 0)
+
+        # THJ1: MCP flexion (range -0.52 to 0.52)
+        angles["THJ1"] = np.clip(-thj1_raw, -0.52, 0.52)
+
+        # CMC joints - compute from thumb base orientation
+        # Compute palm plane
+        v_wrist_index = landmarks[INDEX_MCP] - landmarks[WRIST]
+        v_wrist_pinky = landmarks[PINKY_MCP] - landmarks[WRIST]
+        palm_normal = np.cross(v_wrist_index, v_wrist_pinky)
+        palm_normal = unit_vector(palm_normal)
+
+        # Thumb CMC direction
+        thumb_base_dir = unit_vector(v_wrist_cmc)
+
+        # THJ4: CMC horizontal rotation (range -1.047 to 1.047)
+        thumb_in_plane = thumb_base_dir - np.dot(thumb_base_dir, palm_normal) * palm_normal
+        thumb_in_plane = unit_vector(thumb_in_plane)
+        ref_dir = unit_vector(v_wrist_index)
+        thj4_raw = angle_between(thumb_in_plane, ref_dir) - 1.0
+        angles["THJ4"] = np.clip(thj4_raw, -1.047, 1.047)
+
+        # THJ3: CMC vertical elevation (range 0 to 1.3 - POSITIVE ONLY)
+        elevation = np.dot(thumb_base_dir, palm_normal)
+        thj3_raw = np.arcsin(np.clip(elevation, -1.0, 1.0))
+        angles["THJ3"] = np.clip(abs(thj3_raw), 0, 1.3)  # Must be positive per docs
+
+        # THJ2: MCP abduction (range -0.262 to 0.262)
+        angles["THJ2"] = 0.0
         
         return angles
 

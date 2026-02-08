@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python scripts/replay_m1.py:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(del /q \"vidreward\\\\training\\\\train_hybrid.py\" \"vidreward\\\\training\\\\trajectory_guided_wrapper.py\")",
+      "WebSearch"
     ]
   }
 }

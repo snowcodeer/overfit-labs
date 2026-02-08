@@ -13,6 +13,49 @@ from vidreward.utils.video_io import VideoReader, VideoWriter
 from vidreward.extraction.trajectory import ObjectTrajectory
 from vidreward.phases.phase_detector import PhaseDetector
 
+
+def get_finger_contacts(model, data, obj_geom_id):
+    """
+    Check which fingers are in contact with the object.
+    Returns dict: {finger_name: is_in_contact}
+    Detects contact with any finger segment (proximal, middle, distal).
+    """
+    # All finger geoms in Adroit (not just tips)
+    finger_geoms = {
+        'ff': ['C_ffproximal', 'C_ffmiddle', 'C_ffdistal'],   # Index
+        'mf': ['C_mfproximal', 'C_mfmiddle', 'C_mfdistal'],   # Middle
+        'rf': ['C_rfproximal', 'C_rfmiddle', 'C_rfdistal'],   # Ring
+        'lf': ['C_lfproximal', 'C_lfmiddle', 'C_lfdistal'],   # Pinky
+        'th': ['C_thproximal', 'C_thmiddle', 'C_thdistal'],   # Thumb
+    }
+
+    contacts = {name: False for name in finger_geoms}
+
+    # Build geom ID -> finger name mapping
+    geom_to_finger = {}
+    for finger, geom_names in finger_geoms.items():
+        for geom_name in geom_names:
+            try:
+                gid = model.geom(geom_name).id
+                geom_to_finger[gid] = finger
+            except:
+                pass  # Geom not found
+
+    # Check all contacts
+    for i in range(data.ncon):
+        contact = data.contact[i]
+        geom1, geom2 = contact.geom1, contact.geom2
+
+        # Check if contact involves object
+        if geom1 == obj_geom_id or geom2 == obj_geom_id:
+            other_geom = geom2 if geom1 == obj_geom_id else geom1
+            # Check if other geom is any finger segment
+            if other_geom in geom_to_finger:
+                contacts[geom_to_finger[other_geom]] = True
+
+    return contacts
+
+
 def replay_m1(video_path: str, output_path: str = "adroit_replay.mp4"):
     print(f"Processing video: {video_path}")
 
@@ -206,8 +249,8 @@ def replay_m1(video_path: str, output_path: str = "adroit_replay.mp4"):
     print(f"Object after reset: {obj_init_pos}")
 
     # CALIBRATE: Find qpos that positions palm to grasp the object
-    # Offset palm so fingers wrap around cube (not palm center at cube center)
-    GRASP_OFFSET = np.array([0.0, -0.06, 0.05])  # Back and up from object center
+    # Position palm ABOVE and BEHIND cube so fingers curl down onto it
+    GRASP_OFFSET = np.array([0.0, -0.08, 0.08])  # 8cm behind, 8cm up (fingers reach down)
     target_pos = obj_init_pos + GRASP_OFFSET
     print(f"Grasp target (with offset): {target_pos}")
     qpos_guess = np.array([0.0, 0.0, 0.0])
@@ -247,7 +290,63 @@ def replay_m1(video_path: str, output_path: str = "adroit_replay.mp4"):
     # Resize video frames to match sim
     vid_frames_resized = [cv2.resize(f, (width, height)) for f in frames]
 
-    GRIP_GAIN = 1.5  # Amplify finger closing for better grasping
+    # Get object geom ID for contact detection
+    try:
+        obj_geom_id = model.geom("cube").id
+        print(f"Object geom 'cube' ID: {obj_geom_id}")
+    except:
+        try:
+            obj_geom_id = model.geom("Object").id  # Fallback name
+            print(f"Object geom 'Object' ID: {obj_geom_id}")
+        except:
+            # List all geoms to find the object
+            print("Could not find object geom. Available geoms:")
+            for i in range(model.ngeom):
+                print(f"  {i}: {model.geom(i).name}")
+            obj_geom_id = None
+
+    # Adjust cube size to match the Rubik's cube in the video
+    if obj_geom_id is not None:
+        current_size = model.geom_size[obj_geom_id].copy()
+        print(f"Original cube size: {current_size}")
+        # Increase cube size by 20% (slight increase)
+        new_size = current_size * 1.2
+        model.geom_size[obj_geom_id] = new_size
+        print(f"New cube size: {new_size}")  # ~7.2cm cube
+
+    # Debug: List fingertip geom IDs
+    print("\nFingertip geom IDs:")
+    finger_tips_debug = {
+        'ff': 'C_ffdistal',
+        'mf': 'C_mfdistal',
+        'rf': 'C_rfdistal',
+        'lf': 'C_lfdistal',
+        'th': 'C_thdistal',
+    }
+    for name, geom_name in finger_tips_debug.items():
+        try:
+            gid = model.geom(geom_name).id
+            print(f"  {name}: {geom_name} -> geom id {gid}")
+        except Exception as e:
+            print(f"  {name}: {geom_name} -> NOT FOUND: {e}")
+
+    # Finger joint indices in qpos (flexion joints that close fingers)
+    # Format: {finger: [J2_idx, J1_idx, J0_idx]} - MCP, PIP, DIP flexion
+    FINGER_JOINTS = {
+        'ff': [9, 10, 11],    # Index: FFJ2, FFJ1, FFJ0 (indices 9-11 in qpos[3:30] -> 12-14 in qpos)
+        'mf': [13, 14, 15],   # Middle
+        'rf': [17, 18, 19],   # Ring
+        'lf': [22, 23, 24],   # Pinky (has extra J4 at 20)
+        'th': [27, 28, 29],   # Thumb: THJ2, THJ1, THJ0
+    }
+
+    # Grasp state tracking
+    grasp_complete = False  # True when all fingers are in contact
+    GRIP_GAIN = 2.0  # Amplify finger closing (dialed back)
+    CLOSE_RATE = 0.12  # How fast to close fingers before contact
+    GRIP_FORCE_RATE = 0.05  # Additional closing after contact (gentle)
+    BASE_FLEXION = 0.6  # Initial finger flexion - moderate pre-curl
+    TRANSPORT_GRIP_BOOST = 0.08  # Extra grip force during transport
 
     # Fix NaN values in joint trajectory (from divide-by-zero in retargeting)
     joint_traj = np.nan_to_num(joint_traj, nan=0.0, posinf=1.0, neginf=-1.0)
@@ -278,8 +377,27 @@ def replay_m1(video_path: str, output_path: str = "adroit_replay.mp4"):
 
             joint_traj[i, 0:3] = sim_qpos
 
-            # Apply GRIP_GAIN to finger angles
-            joint_traj[i, 3:] *= GRIP_GAIN
+            # Apply GRIP_GAIN to finger flexion angles only (not thumb opposition/abduction)
+            # Indices: 8-24 are finger joints, 25-29 are thumb
+            joint_traj[i, 8:25] *= GRIP_GAIN  # Fingers only
+            # Thumb: DON'T apply extra gain, just use computed values
+            # joint_traj[i, 27:30] *= 1.5  # Disabled - was causing issues
+
+            # Debug thumb at grasp frame
+            if i == grasp_frame:
+                print(f"\n--- THUMB DEBUG at frame {i} ---")
+                print(f"THJ4 (opposition): {joint_traj[i, 25]:.3f}")
+                print(f"THJ3 (abduction):  {joint_traj[i, 26]:.3f}")
+                print(f"THJ2 (CMC flex):   {joint_traj[i, 27]:.3f}")
+                print(f"THJ1 (MCP flex):   {joint_traj[i, 28]:.3f}")
+                print(f"THJ0 (IP flex):    {joint_traj[i, 29]:.3f}")
+
+            # Get current phase for this frame
+            current_phase = "UNKNOWN"
+            for phase in phases:
+                if phase.start_frame <= i <= phase.end_frame:
+                    current_phase = phase.label
+                    break
 
             # Hybrid mode: kinematic before grasp, physics after
             if i < grasp_frame:
@@ -288,18 +406,101 @@ def replay_m1(video_path: str, output_path: str = "adroit_replay.mp4"):
                 mujoco.mj_forward(env.unwrapped.model, env.unwrapped.data)
             else:
                 # Physics mode - use smooth position control
-                # Blend towards target position instead of snapping
-                target_qpos = joint_traj[i]
+                target_qpos = joint_traj[i].copy()
                 current_qpos = env.unwrapped.data.qpos[0:30].copy()
 
-                # Smooth interpolation (avoid sudden jumps)
-                alpha = 0.3  # Blend factor
-                blended_qpos = current_qpos + alpha * (target_qpos - current_qpos)
-                env.unwrapped.data.qpos[0:30] = blended_qpos
-                env.unwrapped.data.qvel[0:30] = 0
+                # Apply base flexion to fingers so they're pre-curled (NOT thumb - it uses negative values)
+                for finger, joint_indices in FINGER_JOINTS.items():
+                    if finger != 'th':  # Skip thumb - it has different sign convention
+                        for jidx in joint_indices:
+                            target_qpos[jidx] = max(target_qpos[jidx], BASE_FLEXION)
 
-                for _ in range(2):
+                # Contact-based finger closing during GRASP/TRANSPORT
+                if current_phase in ["GRASP", "TRANSPORT"]:
+                    contacts = get_finger_contacts(model, data, obj_geom_id)
+                    all_in_contact = all(contacts.values())
+
+                    # TRANSPORT needs extra grip to overcome gravity
+                    grip_rate = GRIP_FORCE_RATE
+                    if current_phase == "TRANSPORT":
+                        grip_rate = GRIP_FORCE_RATE + TRANSPORT_GRIP_BOOST
+
+                    # Debug: Print contact info every 20 frames in GRASP/TRANSPORT
+                    if i >= grasp_frame and (i - grasp_frame) % 20 == 0:
+                        print(f"\n--- CONTACT DEBUG Frame {i} ---")
+                        print(f"Number of contacts: {data.ncon}")
+                        print(f"Phase: {current_phase}, grip_rate: {grip_rate}")
+                        cube_contacts = []
+                        for ci in range(data.ncon):
+                            c = data.contact[ci]
+                            g1_name = model.geom(c.geom1).name if c.geom1 < model.ngeom else f"id{c.geom1}"
+                            g2_name = model.geom(c.geom2).name if c.geom2 < model.ngeom else f"id{c.geom2}"
+                            # Show all contacts involving cube
+                            if c.geom1 == obj_geom_id or c.geom2 == obj_geom_id:
+                                other_name = g1_name if c.geom2 == obj_geom_id else g2_name
+                                cube_contacts.append(other_name if other_name else f"geom{c.geom1 if c.geom2 == obj_geom_id else c.geom2}")
+                        print(f"All cube contacts: {cube_contacts}")
+                        print(f"Finger contacts dict: {contacts}")
+
+                    for finger, joint_indices in FINGER_JOINTS.items():
+                        if finger == 'th':
+                            # Thumb uses negative values for flexion
+                            if contacts[finger]:
+                                for jidx in joint_indices:
+                                    target_qpos[jidx] = current_qpos[jidx] - grip_rate
+                            else:
+                                for jidx in joint_indices:
+                                    target_qpos[jidx] = current_qpos[jidx] - CLOSE_RATE
+                        else:
+                            # Other fingers use positive values
+                            if contacts[finger]:
+                                for jidx in joint_indices:
+                                    target_qpos[jidx] = current_qpos[jidx] + grip_rate
+                            else:
+                                for jidx in joint_indices:
+                                    target_qpos[jidx] = current_qpos[jidx] + CLOSE_RATE
+
+                    # Clamp finger angles to prevent over-extension
+                    # Increased max flexion for tighter grip
+                    for finger, joint_indices in FINGER_JOINTS.items():
+                        if finger == 'th':
+                            for jidx in joint_indices:
+                                target_qpos[jidx] = np.clip(target_qpos[jidx], -2.5, 0.5)  # was -2.0
+                        else:
+                            for jidx in joint_indices:
+                                target_qpos[jidx] = np.clip(target_qpos[jidx], -0.5, 2.5)  # was 2.0
+
+                    if all_in_contact and not grasp_complete:
+                        grasp_complete = True
+                        print(f"  [Frame {i}] GRASP COMPLETE - all fingers in contact!")
+
+                # Smooth interpolation (avoid sudden jumps)
+                # Faster blend for fingers during grasp, slower arm during transport
+                if current_phase == "TRANSPORT":
+                    # Moderate fingers, slow arm during transport
+                    alpha_arm = 0.2  # Slow arm movement
+                    alpha_fingers = 0.35  # Moderate finger response
+                    blended_qpos = current_qpos.copy()
+                    blended_qpos[0:6] += alpha_arm * (target_qpos[0:6] - current_qpos[0:6])  # Arm
+                    blended_qpos[6:30] += alpha_fingers * (target_qpos[6:30] - current_qpos[6:30])  # Fingers
+                elif current_phase == "GRASP":
+                    alpha = 0.3  # Gentler grasp
+                    blended_qpos = current_qpos + alpha * (target_qpos - current_qpos)
+                else:
+                    alpha = 0.3
+                    blended_qpos = current_qpos + alpha * (target_qpos - current_qpos)
+                # Use actuator control instead of direct qpos (respects collisions)
+                # Adroit uses position actuators - set ctrl to desired positions
+                env.unwrapped.data.ctrl[:30] = blended_qpos
+
+                # More substeps during grasp/transport for stable grip
+                n_substeps = 10 if current_phase in ["GRASP", "TRANSPORT"] else 5
+                for _ in range(n_substeps):
                     mujoco.mj_step(env.unwrapped.model, env.unwrapped.data)
+
+            # Reset grasp state on RELEASE
+            if current_phase == "RELEASE":
+                grasp_complete = False
 
             # Debug at grasp frame - see where things ACTUALLY end up
             if i == grasp_frame:
@@ -350,13 +551,7 @@ def replay_m1(video_path: str, output_path: str = "adroit_replay.mp4"):
             cv2.rectangle(vid_frame, (obj_cx - 30, obj_cy - 30), (obj_cx + 30, obj_cy + 30), (255, 0, 255), 2)
             cv2.circle(vid_frame, (obj_cx, obj_cy), 5, (255, 0, 255), -1)
 
-            # --- Draw current phase ---
-            current_phase = "UNKNOWN"
-            for phase in phases:
-                if phase.start_frame <= i <= phase.end_frame:
-                    current_phase = phase.label
-                    break
-
+            # --- Draw current phase (already computed above) ---
             # Phase color coding
             phase_colors = {
                 "IDLE": (128, 128, 128),
