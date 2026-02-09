@@ -14,6 +14,13 @@ from vidreward.utils.storage import storage
 import subprocess
 import sys
 import shutil
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+load_dotenv()
+API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+if API_KEY:
+    genai.configure(api_key=API_KEY)
 
 app = FastAPI(title="OVERFIT Robotics Iteration Dashboard API")
 
@@ -50,6 +57,10 @@ class RunInfo(BaseModel):
     config: dict
     has_history: bool
     has_video: bool
+
+class ChatRequest(BaseModel):
+    message: str
+    current_analysis: dict
 
 @app.get("/api/runs", response_model=List[RunInfo])
 def list_runs():
@@ -550,6 +561,49 @@ def complete_training(task_name: str, results: dict):
             break
     
     return {"status": "completed", "task_name": task_name}
+
+@app.post("/api/training/chat/{task_name}")
+async def chat_with_gemini(task_name: str, request: ChatRequest):
+    """Refine labels via chat with Gemini"""
+    if not API_KEY:
+        raise HTTPException(status_code=500, detail="Gemini API Key not configured")
+    
+    # Use flash for quick turnaround
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    
+    prompt = f"""
+    You are an expert robotics assistant helping to refine event labels (milestones) for a video-based training task.
+    
+    Task Name: {task_name}
+    Current Analysis: {json.dumps(request.current_analysis, indent=2)}
+    
+    User Input: {request.message}
+    
+    Instructions:
+    1. Based on the user input, adjust the milestone frames or labels in the analysis.
+    2. If the user asks for a relative change (e.g. "shift everything by 5 frames"), calculate the new frame numbers.
+    3. If the user asks for a new milestone, add it with a reasonable frame estimate if possible.
+    4. Return ONLY a JSON object with two fields:
+       - "analysis": the updated analysis JSON (matching the input task_type, milestones, etc. structure)
+       - "thinking": a brief one-sentence explanation of what you changed.
+    
+    Example response structure:
+    {{
+        "analysis": {{ 
+            "object_name": "...",
+            "task_type": "...",
+            "milestones": [...] 
+        }},
+        "thinking": "Updated the grasp_frame to 15 as requested."
+    }}
+    """
+    
+    try:
+        response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+        return json.loads(response.text)
+    except Exception as e:
+        print(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
