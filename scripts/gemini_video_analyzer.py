@@ -48,36 +48,31 @@ def analyze_video(video_path: str):
     print("\nVideo processed.")
     
     # 2. Prompt for Analysis
-    print("Listing models...", flush=True)
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            print(f" - {m.name}", flush=True)
-    print("Model list complete.", flush=True)
-
-    # Use standard model
-    model_name = "models/gemini-3-pro-preview"
-    # model_name = "models/gemini-2.0-flash"
+    model_name = "models/gemini-3-flash-preview"
     print(f"Using model: {model_name}", flush=True)
     model = genai.GenerativeModel(model_name=model_name)
     
     prompt = """
     Analyze this video of a robotic hand (or human hand) manipulating an object.
+    Focus primarily on the **Right Hand** for all tracking and event timing if multiple hands are present.
     
     I need to extract the exact frame numbers for key events to train a robot.
     The video is 30 FPS.
     
-    Please identify:
-    1. The Object: Describe it (color, shape, type).
-    2. Grasp Frame: The exact moment the fingers make firm contact and *start* to apply force/lift.
-    3. Release Frame: The moment the fingers let go of the object.
+    Please identify the task (e.g., pick_and_place, throw, rotate, push) and extract the list of critical keyframes (milestones) for that specific task.
+    Examples:
+    - For 'pick': [grasp_frame, lift_frame, release_frame]
+    - For 'throw': [hold_frame, swing_start_frame, release_frame, flight_end_frame]
+    - For 'push': [contact_frame, move_start_frame, move_end_frame]
     
     Return ONLY a JSON object with this structure:
     {
-        "object_name": "string (e.g. rubiks_cube)",
+        "object_name": "string",
         "object_description": "string",
-        "grasp_frame": int,
-        "release_frame": int,
-        "task_type": "string (e.g. pick_and_place, push, rotate)"
+        "task_type": "string",
+        "milestones": [
+            {"label": "string (human readable event name)", "frame": int, "description": "short explanation"}
+        ]
     }
     """
     

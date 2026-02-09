@@ -23,3 +23,11 @@ wandb
 pyyaml
 pydantic
 open_clip_torch
+
+# Cloud & Deployment
+boto3
+python-dotenv
+fastapi
+uvicorn
+# AI & Generative
+google-generativeai

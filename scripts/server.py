@@ -35,6 +35,14 @@ if not RUNS_DIR.exists():
 app.mount("/runs", StaticFiles(directory="runs"), name="runs")
 app.mount("/data", StaticFiles(directory="data"), name="data")
 
+REPLAYS_DIR = Path("data/replays")
+ANALYSIS_DIR = Path("data/analysis")
+REPLAYS_DIR.mkdir(parents=True, exist_ok=True)
+ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Folders to ignore when listing runs
+RUN_BLACKLIST = {"plots", "tb", "tensorboard", "temp", "logs", "checkpoints", "runs"}
+
 class RunInfo(BaseModel):
     id: str
     group: str
@@ -52,7 +60,7 @@ def list_runs():
         for group_dir in RUNS_DIR.iterdir():
             if group_dir.is_dir():
                 for run_dir in group_dir.iterdir():
-                    if run_dir.is_dir() and (run_dir / "config.pkl").exists():
+                    if run_dir.is_dir() and run_dir.name not in RUN_BLACKLIST and (run_dir / "config.pkl").exists():
                         try:
                             # ... (existing loading logic) ...
                             with open(run_dir / "config.pkl", "rb") as f:
@@ -90,6 +98,9 @@ def list_runs():
                     for run_p in run_prefixes:
                         run_id = run_p['Prefix'].strip("/").split("/")[-1]
                         
+                        if run_id in RUN_BLACKLIST:
+                            continue
+
                         # Avoid duplicates if local run exists
                         if any(r.id == run_id and r.group == group_name for r in all_runs):
                             continue
@@ -192,6 +203,7 @@ class Job(BaseModel):
     session_id: Optional[str] = None # For filtering "my runs"
     resume_path: Optional[str] = None
     timesteps: int = 50000
+    type: str = "train" # train, analyze, replay
     status: str = "pending" # pending, running, completed, failed, stopped
     created_at: float
     started_at: Optional[float] = None
@@ -210,7 +222,7 @@ class JobQueue:
         self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.worker_thread.start()
 
-    def add_job(self, video: str, resume_path: Optional[str], timesteps: int, session_id: Optional[str] = None) -> str:
+    def add_job(self, video: str, resume_path: Optional[str] = None, timesteps: int = 50000, session_id: Optional[str] = None, job_type: str = "train") -> str:
         job_id = str(uuid.uuid4())[:8]
         job = Job(
             id=job_id,
@@ -218,12 +230,13 @@ class JobQueue:
             session_id=session_id,
             resume_path=resume_path,
             timesteps=timesteps,
+            type=job_type,
             created_at=time.time()
         )
         with self.lock:
             self.jobs[job_id] = job
             self.queue.append(job_id)
-        print(f"[Queue] Added job {job_id} for {video}")
+        print(f"[Queue] Added {job_type} job {job_id} for {video}")
         return job_id
 
     def stop_job(self, job_id: str):
@@ -261,8 +274,9 @@ class JobQueue:
                 # Clean up finished jobs
                 for job_id in list(self.active):
                     job = self.jobs[job_id]
-                    if job.process.poll() is not None: # Process finished
-                        return_code = job.process.return_code
+                    proc = getattr(job, "process", None)
+                    if proc and proc.poll() is not None: # Process finished
+                        return_code = proc.returncode
                         if return_code == 0:
                             job.status = "completed"
                         else:
@@ -281,21 +295,37 @@ class JobQueue:
         job.started_at = time.time()
         self.active.append(job_id)
         
-        cmd = [
-            sys.executable, "scripts/train_grasp_residual.py",
-            "--video", job.video,
-            "--timesteps", str(job.timesteps)
-        ]
-        if job.resume_path:
-            cmd.extend(["--resume", job.resume_path])
+        if job.type == "analyze":
+            cmd = [
+                sys.executable, "scripts/analyze_and_label.py",
+                "--video", job.video
+            ]
+        elif job.type == "replay":
+            video_name = Path(job.video).stem
+            analysis_path = ANALYSIS_DIR / f"{video_name}_analysis.json"
+            output_path = REPLAYS_DIR / f"{video_name}_sim_sbs.mp4"
+            cmd = [
+                sys.executable, "scripts/replay_m1.py",
+                "--video", job.video,
+                "--analysis", str(analysis_path),
+                "--out", str(output_path)
+            ]
+        else:
+            cmd = [
+                sys.executable, "scripts/train_grasp_residual.py",
+                "--video", job.video,
+                "--timesteps", str(job.timesteps)
+            ]
+            if job.resume_path:
+                cmd.extend(["--resume", job.resume_path])
 
-        print(f"[Queue] Starting job {job_id}: {' '.join(cmd)}")
+        print(f"[Queue] Starting {job.type} job {job_id}: {' '.join(cmd)}")
         try:
             # Use Popen to keep track of process
             process = subprocess.Popen(cmd)
             job.pid = process.pid
-            # Store process object in job (not serializable, so transient)
-            job.process = process 
+            # Store process object in job attribute 
+            setattr(job, "process", process)
         except Exception as e:
             print(f"[Queue] Failed to start job {job_id}: {e}")
             job.status = "failed"
@@ -309,11 +339,39 @@ class EnqueueRequest(BaseModel):
     resume_path: Optional[str] = None
     timesteps: int = 50000
     session_id: Optional[str] = None
+    type: str = "train"
 
 @app.post("/api/queue/add")
 def add_to_queue(req: EnqueueRequest):
-    job_id = job_queue.add_job(req.video, req.resume_path, req.timesteps, req.session_id)
+    job_id = job_queue.add_job(req.video, req.resume_path, req.timesteps, req.session_id, req.type)
     return {"status": "queued", "job_id": job_id}
+
+class ConfirmAnalysisRequest(BaseModel):
+    video: str
+    analysis: dict
+    session_id: Optional[str] = None
+
+@app.post("/api/analysis/confirm")
+async def confirm_analysis(req: ConfirmAnalysisRequest):
+    video_path = Path(req.video)
+    analysis_file = ANALYSIS_DIR / f"{video_path.stem}_analysis.json"
+    
+    # Save confirmed analysis
+    with open(analysis_file, "w") as f:
+        json.dump(req.analysis, f, indent=4)
+    
+    # Trace: Enqueue Replay + Training
+    # Replay job (MuJoCo sim)
+    replay_id = job_queue.add_job(video=req.video, session_id=req.session_id, job_type="replay")
+    
+    # Training job
+    train_id = job_queue.add_job(video=req.video, session_id=req.session_id, job_type="train")
+    
+    return {
+        "status": "confirmed", 
+        "replay_job_id": replay_id, 
+        "train_job_id": train_id
+    }
 
 @app.get("/api/queue/status")
 def get_queue_status(session_id: Optional[str] = None):
@@ -355,24 +413,168 @@ def download_run(group: str, run_id: str):
     return FileResponse(zip_path, filename=zip_name, media_type="application/zip")
 
 
+# --- Videos Library API ---
+@app.get("/api/videos/library")
+def get_videos_library():
+    """Get list of all uploaded videos with their analysis status"""
+    data_dir = Path("data")
+    videos = []
+    
+    if not data_dir.exists():
+        return {"videos": []}
+    
+    for task_dir in data_dir.iterdir():
+        if not task_dir.is_dir() or task_dir.name.startswith('.'):
+            continue
+        
+        video_file = task_dir / "video.mp4"
+        analysis_file = task_dir / "analysis.json"
+        
+        if not video_file.exists():
+            continue
+        
+        # Determine status
+        status = "none"
+        task_type = None
+        if analysis_file.exists():
+            status = "completed"
+            try:
+                with open(analysis_file) as f:
+                    analysis_data = json.load(f)
+                    task_type = analysis_data.get("task_type")
+            except:
+                pass
+        
+        # Generate S3 URL if storage is enabled, otherwise use local path
+        video_url = str(video_file)
+        if storage.enabled:
+            # S3 URL format
+            video_url = storage.get_url(f"data/{task_dir.name}/video.mp4")
+        
+        videos.append({
+            "task_name": task_dir.name,
+            "path": str(video_file),  # Keep local path for backend operations
+            "video_url": video_url,   # URL for frontend to fetch from
+            "status": status,
+            "task_type": task_type,
+            "created_at": video_file.stat().st_mtime
+        })
+    
+    # Sort by creation time (newest first)
+    videos.sort(key=lambda x: x["created_at"], reverse=True)
+    
+    return {"videos": videos}
+
+@app.delete("/api/videos/{task_name}")
+def delete_video(task_name: str):
+    """Delete a video and all associated files"""
+    task_dir = Path("data") / task_name
+    
+    if not task_dir.exists():
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    try:
+        shutil.rmtree(task_dir)
+        return {"status": "deleted", "task_name": task_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete: {e}")
+
+# --- Training API (for hybrid deployment) ---
+@app.get("/api/training/prepare/{task_name}")
+def prepare_training(task_name: str):
+    """Get training configuration and download URLs for local training"""
+    task_dir = Path("data") / task_name
+    
+    if not task_dir.exists():
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    analysis_file = task_dir / "analysis.json"
+    if not analysis_file.exists():
+        raise HTTPException(status_code=400, detail="Video not analyzed yet")
+    
+    # Load analysis
+    with open(analysis_file) as f:
+        analysis = json.load(f)
+    
+    # Generate S3 URLs if storage is enabled
+    video_url = f"/data/{task_name}/video.mp4"
+    analysis_url = f"/data/{task_name}/analysis.json"
+    
+    if storage.enabled:
+        video_url = storage.get_url(f"data/{task_name}/video.mp4")
+        analysis_url = storage.get_url(f"data/{task_name}/analysis.json")
+    
+    return {
+        "task_name": task_name,
+        "task_type": analysis.get("task_type", "unknown"),
+        "video_url": video_url,
+        "analysis_url": analysis_url,
+        "training_command": f"python scripts/train_cli.py --task {task_name} --backend http://localhost:8000",
+        "milestones": analysis.get("milestones", [])
+    }
+
+@app.post("/api/training/start/{task_name}")
+def start_training(task_name: str, machine_info: dict = None):
+    """Mark training as started"""
+    # Update job queue status
+    for job in job_queue:
+        if job.get("session_id") == task_name:
+            job["status"] = "training_local"
+            job["machine_info"] = machine_info or {}
+            break
+    
+    return {"status": "started", "task_name": task_name}
+
+@app.post("/api/training/progress/{task_name}")
+def update_training_progress(task_name: str, progress: dict):
+    """Receive progress updates from local training"""
+    # Update job queue with progress
+    for job in job_queue:
+        if job.get("session_id") == task_name:
+            job["training_progress"] = progress
+            break
+    
+    return {"status": "updated"}
+
+@app.post("/api/training/complete/{task_name}")
+def complete_training(task_name: str, results: dict):
+    """Mark training as complete and validate results"""
+    # Check if results were uploaded to S3
+    run_dir = Path("runs") / task_name
+    
+    # Update job queue
+    for job in job_queue:
+        if job.get("session_id") == task_name:
+            job["status"] = "completed"
+            job["results"] = results
+            break
+    
+    return {"status": "completed", "task_name": task_name}
+
+
+
 # --- Upload Feature ---
 from fastapi import UploadFile, File
 
 @app.post("/api/upload")
 async def upload_video(file: UploadFile = File(...)):
     # 1. Validate File Size (Max 50MB) 
-    # Note: determining size streamingly is tricky, checking content-length header
-    # or reading chunks.
     MAX_SIZE = 50 * 1024 * 1024
     
-    # 2. Save file
+    # 2. Create task-based folder structure
     data_dir = Path("data")
     if not data_dir.exists():
         data_dir.mkdir()
     
-    # Sanitize filename
+    # Sanitize filename and create task folder
     safe_name = Path(file.filename).name.replace(" ", "_")
-    target_path = data_dir / safe_name
+    task_name = Path(safe_name).stem  # filename without extension
+    task_dir = data_dir / task_name
+    task_dir.mkdir(exist_ok=True)
+    
+    # Save video as "video.mp4" in task folder
+    video_ext = Path(safe_name).suffix
+    target_path = task_dir / f"video{video_ext}"
     
     size = 0
     with open(target_path, "wb") as buffer:
@@ -385,8 +587,11 @@ async def upload_video(file: UploadFile = File(...)):
                 target_path.unlink() # Delete partial
                 raise HTTPException(status_code=413, detail="File too large (Max 50MB)")
             buffer.write(chunk)
+    
+    # Enqueue Analysis Job
+    job_id = job_queue.add_job(video=str(target_path), job_type="analyze", session_id=task_name)
             
-    return {"status": "uploaded", "filename": safe_name, "path": f"data/{safe_name}"}
+    return {"status": "uploaded", "filename": safe_name, "path": str(target_path), "task_name": task_name, "job_id": job_id}
 
 
 @app.get("/api/train/status/{task_id}")

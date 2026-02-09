@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - BLOB_BUCKET_NAME=${BLOB_BUCKET_NAME}
+      - BLOB_ACCESS_KEY=${BLOB_ACCESS_KEY}
+      - BLOB_SECRET_KEY=${BLOB_SECRET_KEY}
+      - BLOB_ENDPOINT_URL=${BLOB_ENDPOINT_URL}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - ./data:/app/data
+      - ./runs:/app/runs
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

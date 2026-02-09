@@ -77,7 +77,7 @@ class MediaPipeTracker:
                 break
             
             # Use real timestamps from video
-            timestamp_ms = int(1000 * frame_idx / fps)
+            timestamp_ms = int(1000 * frame_idx / float(fps))
             
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
@@ -85,6 +85,7 @@ class MediaPipeTracker:
             result = self.landmarker.detect_for_video(mp_image, timestamp_ms)
             
             if result.hand_landmarks:
+                # Take the first hand
                 lms = np.array([[lm.x, lm.y, lm.z] for lm in result.hand_landmarks[0]])
                 conf = result.handedness[0][0].score
                 landmarks_list.append(lms)
@@ -109,7 +110,7 @@ class MediaPipeTracker:
         confidences_list = []
 
         for frame_idx, frame in enumerate(frames):
-            timestamp_ms = int(1000 * frame_idx / fps)
+            timestamp_ms = int(1000 * frame_idx / float(fps))
 
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
@@ -117,6 +118,7 @@ class MediaPipeTracker:
             result = self.landmarker.detect_for_video(mp_image, timestamp_ms)
 
             if result.hand_landmarks:
+                # Take the first hand
                 lms = np.array([[lm.x, lm.y, lm.z] for lm in result.hand_landmarks[0]])
                 conf = result.handedness[0][0].score
                 landmarks_list.append(lms)

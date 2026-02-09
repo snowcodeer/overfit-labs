@@ -48,9 +48,25 @@ class BlobStorage:
         if not self.enabled: return
         try:
             self.s3.download_file(self.bucket_name, remote_path, local_path)
+            print(f"Downloaded {remote_path} -> {local_path}")
         except Exception as e:
             print(f"Download failed: {e}")
             raise e
+
+    def get_url(self, remote_path: str, expiration: int = 3600):
+        """Generate a presigned URL for accessing a file in S3"""
+        if not self.enabled:
+            return None
+        try:
+            url = self.s3.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': self.bucket_name, 'Key': remote_path},
+                ExpiresIn=expiration
+            )
+            return url
+        except Exception as e:
+            print(f"Failed to generate URL: {e}")
+            return None
 
     def list_runs(self):
         if not self.enabled: return []

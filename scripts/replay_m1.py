@@ -59,7 +59,8 @@ def get_finger_contacts(model, data, obj_geom_id):
 def replay_m1(video_path: str, output_path: str = "adroit_replay.mp4", 
               obj_scale: float = 0.8, 
               hand_scales: tuple = (0.5, 0.3, 0.3), 
-              grasp_offset: tuple = (0.0, -0.08, 0.08)):
+              grasp_offset: tuple = (0.0, -0.08, 0.08),
+              analysis_path: str = None):
     print(f"Processing video: {video_path}")
     print(f"Config: ObjScale={obj_scale}, HandScales={hand_scales}, GraspOffset={grasp_offset}")
 
@@ -132,21 +133,53 @@ def replay_m1(video_path: str, output_path: str = "adroit_replay.mp4",
         obj_pos_sim[i] = [nx * SCALE, -ny * SCALE + 0.1, 0.035]  # Z fixed on table
 
     # Detect GRASP phase to calibrate object position
-    print("Detecting grasp phase...")
-    obj_traj = ObjectTrajectory(centroids=obj_pos_vid_norm)
-    phase_detector = PhaseDetector()
-    phases = phase_detector.detect_phases(hand_traj, obj_traj)
+    if analysis_path and os.path.exists(analysis_path):
+        import json
+        with open(analysis_path, 'r') as f:
+            analysis_data = json.load(f)
+            
+        # Extract milestones or fallback to legacy fields
+        milestones = analysis_data.get("milestones", [])
+        if milestones:
+            # Mapping heuristic for simulation physics:
+            # Identify grasp and release frames from the label names
+            grasp_ms = next((m for m in milestones if "grasp" in m['label'].lower() or "hold" in m['label'].lower() or "contact" in m['label'].lower()), milestones[0])
+            release_ms = next((m for m in milestones if "release" in m['label'].lower() or "throw" in m['label'].lower() or "drop" in m['label'].lower()), milestones[-1])
+            
+            grasp_frame = grasp_ms['frame']
+            release_frame = release_ms['frame']
+        else:
+            grasp_frame = analysis_data.get("grasp_frame", 0)
+            release_frame = analysis_data.get("release_frame", num_frames)
+            
+        print(f"Using milestones from analysis: {grasp_frame}, {release_frame}")
+        
+        # Build manual phases for logic compatibility
+        from dataclasses import dataclass
+        @dataclass
+        class SimplePhase:
+            label: str
+            start_frame: int
+            end_frame: int
+            
+        phases = [
+            SimplePhase("APPROACH", 0, grasp_frame - 1),
+            SimplePhase("GRASP", grasp_frame, grasp_frame + 10), # Small window for initial grasp physics
+            SimplePhase("TRANSPORT", grasp_frame + 1, release_frame - 1),
+            SimplePhase("RELEASE", release_frame, num_frames)
+        ]
+    else:
+        print("Detecting grasp phase...")
+        obj_traj = ObjectTrajectory(centroids=obj_pos_vid_norm)
+        phase_detector = PhaseDetector()
+        phases = phase_detector.detect_phases(hand_traj, obj_traj)
 
-    # Print all detected phases
-    for phase in phases:
-        print(f"  Phase: {phase.label} [{phase.start_frame}-{phase.end_frame}]")
-
-    # Find first GRASP frame
-    grasp_frame = 0
-    for phase in phases:
-        if phase.label == "GRASP":
-            grasp_frame = phase.start_frame
-            break
+        # Find first GRASP frame
+        grasp_frame = 0
+        for phase in phases:
+            if phase.label == "GRASP":
+                grasp_frame = phase.start_frame
+                break
 
     print(f"First grasp at frame: {grasp_frame}")
 
@@ -394,12 +427,21 @@ def replay_m1(video_path: str, output_path: str = "adroit_replay.mp4",
                 print(f"THJ1 (MCP flex):   {joint_traj[i, 28]:.3f}")
                 print(f"THJ0 (IP flex):    {joint_traj[i, 29]:.3f}")
 
-            # Get current phase for this frame
-            current_phase = "UNKNOWN"
-            for phase in phases:
-                if phase.start_frame <= i <= phase.end_frame:
-                    current_phase = phase.label
-                    break
+            # Determine current phase label based on milestones
+            current_phase = "IDLE"
+            if milestones:
+                sorted_ms = sorted(milestones, key=lambda x: x['frame'])
+                for ms in sorted_ms:
+                    if i >= ms['frame']:
+                        current_phase = ms['label'].upper()
+                    else:
+                        break
+            else:
+                # Fallback to older 'phases' list if milestones not present
+                for phase in phases:
+                    if phase.start_frame <= i <= phase.end_frame:
+                        current_phase = phase.label
+                        break
 
             # Hybrid mode: kinematic before grasp, physics after
             if i < grasp_frame:
@@ -590,6 +632,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--video", default="data/pick-rubiks-cube.mp4")
     parser.add_argument("--out", default="adroit_replay_sbs.mp4") # Side-by-side
+    parser.add_argument("--analysis", help="Path to Gemini analysis JSON")
     
     # Tuning params
     parser.add_argument("--obj-scale", type=float, default=0.8, help="Scale for object position mapping")
@@ -605,4 +648,5 @@ if __name__ == "__main__":
     replay_m1(args.video, args.out, 
              obj_scale=args.obj_scale, 
              hand_scales=hand_scales, 
-             grasp_offset=grasp_offset)
+             grasp_offset=grasp_offset,
+             analysis_path=args.analysis)

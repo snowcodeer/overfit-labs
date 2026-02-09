@@ -1,5 +1,5 @@
 import logo from '../assets/logo.png';
-import { Home, Database, Activity, Plus } from 'lucide-react';
+import { Home, Database, Activity, Plus, Video } from 'lucide-react';
 
 export default function Navbar({ currentView, setView, onNewRun }) {
   const NavItem = ({ view, icon: Icon, label }) => (
@@ -24,6 +24,7 @@ export default function Navbar({ currentView, setView, onNewRun }) {
 
       <div className="navbar-links">
         <NavItem view="home" icon={Home} label="Home" />
+        <NavItem view="videos" icon={Video} label="Videos" />
         <NavItem view="hub" icon={Database} label="Experiments" />
         <NavItem view="queue" icon={Activity} label="Activity" />
       </div>

@@ -58,3 +58,33 @@ def plot_distances(distances: List[float], output_path: str, title: str = "Hand-
     plt.grid(True)
     plt.savefig(output_path)
     plt.close()
+def draw_phase_label(frame: np.ndarray, frame_idx: int, milestones: Optional[List[dict]] = None):
+    """Draw the current phase label on the frame based on milestones."""
+    h, w, _ = frame.shape
+    text = "PHASE: "
+    color = (255, 255, 255)
+    
+    if not milestones:
+        text += "NO MILESTONES"
+    else:
+        # Sort milestones by frame count
+        sorted_ms = sorted(milestones, key=lambda x: x['frame'])
+        
+        current_label = "PRE-START"
+        for ms in sorted_ms:
+            if frame_idx >= ms['frame']:
+                current_label = ms['label'].upper()
+            else:
+                break
+        
+        text += current_label
+        # Pick color based on phase (basic hash-based color for dynamic labels)
+        import hashlib
+        color_hash = int(hashlib.md5(current_label.encode()).hexdigest(), 16)
+        color = ( (color_hash & 0xFF), (color_hash >> 8) & 0xFF, (color_hash >> 16) & 0xFF )
+        # Ensure it's not too dark
+        color = tuple(max(c, 100) for c in color)
+
+    cv2.putText(frame, text, (20, h - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+    cv2.putText(frame, f"Frame: {frame_idx}", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+    return frame
