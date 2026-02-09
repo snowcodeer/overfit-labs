@@ -216,7 +216,22 @@ export default function AnalysisReview({ videoPath, onConfirm, onCancel }) {
                     </div>
 
                     <div className="video-controls">
-                        <div className="timeline-container">
+                        <div className="timeline-container" style={{ position: 'relative', height: '24px', display: 'flex', alignItems: 'center' }}>
+                            <div className="milestone-markers">
+                                {editedAnalysis.milestones.map((ms, idx) => {
+                                    const totalFrames = duration * FPS;
+                                    const percentage = totalFrames > 0 ? (ms.frame / totalFrames) * 100 : 0;
+                                    return (
+                                        <div
+                                            key={idx}
+                                            className="timeline-marker"
+                                            style={{ left: `${percentage}%` }}
+                                            title={ms.label}
+                                            onClick={() => seekToFrame(ms.frame)}
+                                        />
+                                    );
+                                })}
+                            </div>
                             <input
                                 type="range"
                                 min="0"
@@ -310,7 +325,33 @@ export default function AnalysisReview({ videoPath, onConfirm, onCancel }) {
                 .video-overlay-info { position: absolute; top: 16px; left: 16px; pointer-events: none; }
                 .overlay-frame { background: rgba(0,0,0,0.6); color: white; padding: 4px 10px; border-radius: 4px; font-family: monospace; font-size: 0.8rem; border: 1px solid rgba(255,255,255,0.2); }
                 .video-controls { margin-top: 24px; background: var(--bg-card); padding: 20px; border-radius: 16px; border: 1px solid var(--border-color); }
-                .timeline-slider { width: 100%; margin-bottom: 20px; }
+                .timeline-container { position: relative; margin-bottom: 20px; }
+                .milestone-markers { position: absolute; top: 0; left: 0; right: 0; height: 100%; pointer-events: none; }
+                .timeline-marker { 
+                    position: absolute; 
+                    top: 50%; 
+                    width: 2px; 
+                    height: 20px; 
+                    background: #a855f7; 
+                    transform: translate(-50%, -50%); 
+                    z-index: 5;
+                    cursor: pointer;
+                    pointer-events: auto;
+                    box-shadow: 0 0 10px rgba(168, 85, 247, 0.8);
+                }
+                .timeline-marker::after {
+                    content: '';
+                    position: absolute;
+                    top: -10px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    width: 0;
+                    height: 0;
+                    border-left: 5px solid transparent;
+                    border-right: 5px solid transparent;
+                    border-top: 5px solid #a855f7;
+                }
+                .timeline-slider { width: 100%; position: relative; z-index: 1; }
                 .control-buttons { display: flex; align-items: center; gap: 12px; }
                 .icon-btn { background: var(--bg-secondary); border: 1px solid var(--border-color); color: white; padding: 8px; border-radius: 8px; cursor: pointer; }
                 .play-btn { background: #a855f7; border: none; padding: 12px; border-radius: 50%; }
