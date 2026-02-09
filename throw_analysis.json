@@ -1,7 +1,0 @@
-{
-    "object_name": "rubiks_cube",
-    "object_description": "A standard 3x3 multi-colored puzzle cube with black borders, showing green and orange faces.",
-    "grasp_frame": 80,
-    "release_frame": 40,
-    "task_type": "toss_and_catch"
-}

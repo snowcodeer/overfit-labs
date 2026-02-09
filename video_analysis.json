@@ -1,7 +1,0 @@
-{
-    "object_name": "cuboid_puzzle",
-    "object_description": "A rectangular 2x3x3 twisty puzzle cube featuring orange, yellow, and green stickers.",
-    "grasp_frame": 102,
-    "release_frame": 207,
-    "task_type": "slide"
-}

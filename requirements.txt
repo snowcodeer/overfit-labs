@@ -18,6 +18,8 @@ decord
 numpy
 scipy
 matplotlib
+# seaborn # Removed to avoid dependency hell
 wandb
 pyyaml
 pydantic
+open_clip_torch
