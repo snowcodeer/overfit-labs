@@ -47,6 +47,7 @@ class PlotCallback(BaseCallback):
         self.task_type = task_type
         self.plot_freq = plot_freq
         os.makedirs(plot_dir, exist_ok=True)
+        self.history_path = os.path.join(plot_dir, "history.pkl")
 
         self.episode_rewards = []
         self.episode_lengths = []
@@ -55,6 +56,39 @@ class PlotCallback(BaseCallback):
         self.contacts = []
         self.lifted = []
         self.timesteps_log = []
+
+        self._load_history()
+
+    def _load_history(self):
+        import pickle
+        if os.path.exists(self.history_path):
+            try:
+                with open(self.history_path, "rb") as f:
+                    history = pickle.load(f)
+                self.episode_rewards = history.get('episode_rewards', [])
+                self.episode_lengths = history.get('episode_lengths', [])
+                self.successes = history.get('successes', [])
+                self.distances = history.get('distances', [])
+                self.contacts = history.get('contacts', [])
+                self.lifted = history.get('lifted', [])
+                self.timesteps_log = history.get('timesteps_log', [])
+                print(f"Loaded training history: {len(self.episode_rewards)} episodes.")
+            except Exception as e:
+                print(f"Warning: Could not load training history: {e}")
+
+    def _save_history(self):
+        import pickle
+        history = {
+            'episode_rewards': self.episode_rewards,
+            'episode_lengths': self.episode_lengths,
+            'successes': self.successes,
+            'distances': self.distances,
+            'contacts': self.contacts,
+            'lifted': self.lifted,
+            'timesteps_log': self.timesteps_log
+        }
+        with open(self.history_path, "wb") as f:
+            pickle.dump(history, f)
 
     def _on_step(self) -> bool:
         for info in self.locals.get("infos", []):
@@ -80,6 +114,7 @@ class PlotCallback(BaseCallback):
 
         if self.n_calls % self.plot_freq == 0 and len(self.episode_rewards) > 10:
             self._save_plots()
+            self._save_history()
 
         return True
 
@@ -502,43 +537,92 @@ class GraspResidualEnv(gym.Wrapper):
 
 def train(args):
     from datetime import datetime
+    import pickle
+    import shutil
 
     video_name = Path(args.video).stem
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = f"{video_name}_{timestamp}"
-    run_dir = os.path.join(args.output_dir, run_name)
-    os.makedirs(run_dir, exist_ok=True)
 
-    print(f"Training Residual RL for {video_name}")
-    print(f"Directory: {run_dir}")
+    model_to_load = None
+    if args.resume:
+        source_dir = args.resume
+        if not os.path.isdir(source_dir):
+            raise FileNotFoundError(f"Resume directory {source_dir} not found.")
+        
+        # Create NEW run dir for branching
+        run_name = f"{video_name}_{timestamp}_resumed"
+        run_dir = os.path.join(args.output_dir, run_name)
+        os.makedirs(run_dir, exist_ok=True)
+        print(f"Resuming from {source_dir} -> Branched into {run_dir}")
+        
+        config_path = os.path.join(source_dir, "config.pkl")
+        with open(config_path, "rb") as f:
+            config = pickle.load(f)
+        
+        grasp_qpos = config['grasp_qpos']
+        target_pos = config['target_pos']
+        transport_traj = config['transport_traj']
+        task_type = config.get('task_type', 'pick')
 
-    # Extract & Calibrate
-    grasp_qpos, target_pos, transport_traj, joint_traj, grasp_frame, hand_traj, task_type = extract_grasp_pose(args.video)
-    
-    print(f"Task Type: {task_type}")
-    
-    # Init Env just to calibrate transport traj base?
-    # actually we do calibration inside Env per episode now.
-    # But we want to pre-calibrate the transport traj for sanity
-    base_env = gym.make("AdroitHandRelocate-v1")
-    grasp_qpos = calibrate_grasp_pose(base_env, grasp_qpos)
-    
-    # Align transport traj start with calibrated start
-    offset = grasp_qpos[:3] - transport_traj[0, :3]
-    transport_traj[:, :3] += offset
-    base_env.close()
+        # Copy history.pkl if it exists to preserve plotting
+        src_history = os.path.join(source_dir, "plots", "history.pkl")
+        dst_plots = os.path.join(run_dir, "plots")
+        os.makedirs(dst_plots, exist_ok=True)
+        dst_history = os.path.join(dst_plots, "history.pkl")
+        if os.path.exists(src_history):
+            shutil.copy(src_history, dst_history)
+            print("Successfully copied training history.")
 
-    # Save Config
-    import pickle
-    config = {
-        'grasp_qpos': grasp_qpos,
-        'target_pos': target_pos,
-        'transport_traj': transport_traj,
-        'residual_scale': args.residual_scale,
-        'task_type': task_type
-    }
-    with open(os.path.join(run_dir, "config.pkl"), "wb") as f:
-        pickle.dump(config, f)
+        # Save config to new directory
+        with open(os.path.join(run_dir, "config.pkl"), "wb") as f:
+            pickle.dump(config, f)
+        
+        # We still need hand_traj and grasp_frame for the wrapper
+        _, _, _, _, grasp_frame, hand_traj, _ = extract_grasp_pose(args.video)
+
+        # Find model to load
+        model_path = os.path.join(source_dir, "td3_final.zip")
+        if not os.path.exists(model_path):
+            check_dir = os.path.join(source_dir, "checkpoints")
+            if os.path.exists(check_dir):
+                checkpoints = sorted([f for f in os.listdir(check_dir) if f.endswith(".zip")])
+                if checkpoints:
+                    model_path = os.path.join(check_dir, checkpoints[-1])
+                else:
+                    model_path = None
+            else:
+                model_path = None
+        model_to_load = model_path
+    else:
+        run_name = f"{video_name}_{timestamp}"
+        run_dir = os.path.join(args.output_dir, run_name)
+        os.makedirs(run_dir, exist_ok=True)
+
+        print(f"Training Residual RL for {video_name}")
+        print(f"Directory: {run_dir}")
+
+        # Extract & Calibrate
+        grasp_qpos, target_pos, transport_traj, joint_traj, grasp_frame, hand_traj, task_type = extract_grasp_pose(args.video)
+        
+        # Init Env just to calibrate transport traj base
+        base_env = gym.make("AdroitHandRelocate-v1")
+        grasp_qpos = calibrate_grasp_pose(base_env, grasp_qpos)
+        
+        # Align transport traj start balanced with calibrated start
+        offset = grasp_qpos[:3] - transport_traj[0, :3]
+        transport_traj[:, :3] += offset
+        base_env.close()
+
+        # Save Config
+        config = {
+            'grasp_qpos': grasp_qpos,
+            'target_pos': target_pos,
+            'transport_traj': transport_traj,
+            'residual_scale': args.residual_scale,
+            'task_type': task_type
+        }
+        with open(os.path.join(run_dir, "config.pkl"), "wb") as f:
+            pickle.dump(config, f)
 
     # Train Env
     def make_env():
@@ -552,25 +636,35 @@ def train(args):
 
     env = make_env()
 
-    # TD3
-    n_actions = env.action_space.shape[-1]
-    action_noise = NormalActionNoise(
-        mean=np.zeros(n_actions),
-        sigma=0.1 * np.ones(n_actions)
-    )
+    if args.resume and model_to_load:
+        print(f"Loading weights from {model_to_load}...")
+        model = TD3.load(model_to_load, env=env)
+    elif args.resume:
+        print("No existing weights found in resume directory. Starting fresh in new branch.")
+        model = None
+    else:
+        model = None
 
-    model = TD3(
-        "MlpPolicy",
-        env,
-        learning_rate=args.lr,
-        buffer_size=100_000,
-        learning_starts=1000,
-        batch_size=256,
-        action_noise=action_noise,
-        policy_kwargs=dict(net_arch=[256, 256]),
-        verbose=1,
-        tensorboard_log=os.path.join(run_dir, "tb"),
-    )
+    if model is None:
+        # TD3 initialization
+        n_actions = env.action_space.shape[-1]
+        action_noise = NormalActionNoise(
+            mean=np.zeros(n_actions),
+            sigma=0.1 * np.ones(n_actions)
+        )
+
+        model = TD3(
+            "MlpPolicy",
+            env,
+            learning_rate=args.lr,
+            buffer_size=100_000,
+            learning_starts=1000,
+            batch_size=256,
+            action_noise=action_noise,
+            policy_kwargs=dict(net_arch=[256, 256]),
+            verbose=1,
+            tensorboard_log=os.path.join(run_dir, "tb"),
+        )
 
     checkpoint_cb = CheckpointCallback(
         save_freq=20000,
@@ -600,11 +694,12 @@ def train(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--video", required=True, help="Path to demo video")
-    parser.add_argument("--output-dir", default="runs/residual_rl")
+    parser.add_argument("--output-dir", default="runs/residual_pick3")
     parser.add_argument("--timesteps", type=int, default=50000)
     parser.add_argument("--residual-scale", type=float, default=0.3)
     parser.add_argument("--max-steps", type=int, default=100)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--resume", type=str, help="Path to run directory to resume from")
 
     args = parser.parse_args()
     train(args)
