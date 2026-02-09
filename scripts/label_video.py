@@ -6,6 +6,7 @@ Outputs a side-by-side comparison video.
 
 import cv2
 import json
+import pickle
 import argparse
 import numpy as np
 from pathlib import Path
@@ -41,13 +42,27 @@ def label_video(video_path, analysis_path=None, output_path=None):
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
     # Output is single view (labeled)
+    # Output is single view (labeled)
     out_size = (w, h)
-    # Use H.264 codec for browser compatibility
-    fourcc = cv2.VideoWriter_fourcc(*'avc1')
-    out = cv2.VideoWriter(str(output_path), fourcc, fps, out_size)
+    
+    # Use mp4v as it is more reliable for OpenCV writers, though avc1 is better for browsers.
+    # If the user has h264 perms, avc1 works. If not, mp4v works usually.
+    try:
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(str(output_path), fourcc, fps, out_size)
+        if not out.isOpened():
+             print("Warning: mp4v failed, trying avc1...")
+             fourcc = cv2.VideoWriter_fourcc(*'avc1')
+             out = cv2.VideoWriter(str(output_path), fourcc, fps, out_size)
+    except Exception as e:
+        print(f"VideoWriter Init Failed: {e}")
     
     print(f"Labeling video: {video_path}")
     print(f"Output: {output_path}")
+    
+    print(f"Output: {output_path}")
+    
+    all_landmarks = []
     
     frame_idx = 0
     while cap.isOpened():
@@ -62,6 +77,12 @@ def label_video(video_path, analysis_path=None, output_path=None):
         lms, conf = tracker.process_frame(labeled_frame)
         if lms is not None:
             draw_landmarks(labeled_frame, lms, conf)
+            # Store frame index and landmarks
+            all_landmarks.append({
+                "frame": frame_idx,
+                "landmarks": lms,
+                "confidence": conf
+            })
             
         # Draw phases
         draw_phase_label(labeled_frame, frame_idx, milestones)
@@ -77,6 +98,12 @@ def label_video(video_path, analysis_path=None, output_path=None):
     cap.release()
     out.release()
     tracker.close()
+
+    # Save landmarks
+    landmarks_path = video_path.parent / "landmarks.pkl"
+    with open(landmarks_path, 'wb') as f:
+        pickle.dump(all_landmarks, f)
+    print(f"Saved landmarks to {landmarks_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

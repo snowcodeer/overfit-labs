@@ -3,10 +3,10 @@ import { Activity } from 'lucide-react';
 import { fetchRuns } from './utils/api';
 import Navbar from './components/Navbar';
 import ExperimentHub from './components/ExperimentHub';
-import QueueView from './components/QueueView';
 import HomeView from './components/HomeView';
 import AnalysisReview from './components/AnalysisReview';
 import VideosView from './components/VideosView';
+import ExperimentDesign from './components/ExperimentDesign';
 import './index.css';
 
 function App() {
@@ -33,7 +33,7 @@ function App() {
       <Navbar
         currentView={viewMode}
         setView={setViewMode}
-        onNewRun={() => setViewMode('queue')}
+        onNewRun={() => setViewMode('videos')}
       />
 
       <main className="main-content">
@@ -42,17 +42,13 @@ function App() {
             setInitialVideo({ path, jobId });
             setViewMode('analysis');
           }} />
-        ) : viewMode === 'queue' ? (
-          <QueueView
-            onBack={() => setViewMode('home')}
-            sessionId={sessionId}
-            initialVideo={initialVideo}
-            onClearInitial={() => setInitialVideo(null)}
-          />
         ) : viewMode === 'analysis' ? (
           <AnalysisReview
             videoPath={initialVideo?.path}
-            onConfirm={() => setViewMode('queue')}
+            onConfirm={(analysis, confirmed, taskName) => {
+              if (taskName) setInitialVideo({ path: taskName });
+              setViewMode('design');
+            }}
             onCancel={() => setViewMode('home')}
           />
         ) : viewMode === 'videos' ? (
@@ -61,20 +57,23 @@ function App() {
               setInitialVideo({ path });
               setViewMode('analysis');
             }}
-            onLaunchTraining={(path) => {
-              setInitialVideo({ path });
-              setViewMode('queue');
+            onLaunchTraining={(taskName) => {
+              setInitialVideo({ path: taskName });
+              setViewMode('design');
             }}
+          />
+        ) : viewMode === 'design' ? (
+          <ExperimentDesign
+            taskName={initialVideo?.path}
+            onBack={() => setViewMode('videos')}
           />
         ) : viewMode === 'hub' ? (
           <ExperimentHub sessionId={sessionId} />
         ) : (
-          <QueueView
-            onBack={() => setViewMode('home')}
-            sessionId={sessionId}
-            initialVideo={initialVideo}
-            onClearInitial={() => setInitialVideo(null)}
-          />
+          <HomeView onUploadSuccess={(path, jobId) => {
+            setInitialVideo({ path, jobId });
+            setViewMode('analysis');
+          }} />
         )}
       </main>
     </div>

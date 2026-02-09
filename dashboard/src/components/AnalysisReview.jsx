@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Check, X, Play, Pause, Clock, Terminal, Save, Rocket, AlertTriangle, ChevronLeft, ChevronRight, Anchor, Loader2, RefreshCw, Edit2 } from 'lucide-react';
+import { Check, X, Play, Pause, Clock, Terminal, Save, Rocket, AlertTriangle, ChevronLeft, ChevronRight, Anchor, Loader2, RefreshCw, Edit2, Plus, Trash2 } from 'lucide-react';
 
 export default function AnalysisReview({ videoPath, onConfirm, onCancel }) {
     const [analysis, setAnalysis] = useState(null);
@@ -173,6 +173,23 @@ export default function AnalysisReview({ videoPath, onConfirm, onCancel }) {
         setEditingIndex(null);
     };
 
+    const handleAddMilestone = () => {
+        const frame = Math.round(currentTime * FPS);
+        const newMilestones = [...editedAnalysis.milestones, { label: "New Milestone", frame }];
+        newMilestones.sort((a, b) => a.frame - b.frame);
+        setEditedAnalysis({ ...editedAnalysis, milestones: newMilestones });
+        // Jump to edit mode for the new milestone
+        const newIndex = newMilestones.findIndex(m => m.frame === frame);
+        setEditingIndex(newIndex);
+    };
+
+    const handleDeleteMilestone = (index) => {
+        if (confirm("Are you sure you want to delete this milestone?")) {
+            const newMilestones = editedAnalysis.milestones.filter((_, i) => i !== index);
+            setEditedAnalysis({ ...editedAnalysis, milestones: newMilestones });
+        }
+    };
+
     if (loading) {
         return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '24px' }}>
@@ -239,8 +256,8 @@ export default function AnalysisReview({ videoPath, onConfirm, onCancel }) {
                         {isRegenerating ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
                         {isRegenerating ? "Regenerating..." : "Save & Regenerate"}
                     </button>
-                    <button onClick={() => onConfirm(editedAnalysis, true)} className="btn-primary" style={{ background: '#a855f7' }}>
-                        Start Training
+                    <button onClick={() => onConfirm(editedAnalysis, true, taskName)} className="btn-primary" style={{ background: '#a855f7' }}>
+                        Start Training Flow
                     </button>
                 </div>
             </header>
@@ -339,7 +356,12 @@ export default function AnalysisReview({ videoPath, onConfirm, onCancel }) {
                 </div>
 
                 <div className="controls-section">
-                    <div className="card-label">Identified Milestones</div>
+                    <div className="card-label-row">
+                        <div className="card-label">Identified Milestones</div>
+                        <button className="btn-icon-small" onClick={handleAddMilestone} title="Add Milestone at Current Time">
+                            <Plus size={14} />
+                        </button>
+                    </div>
                     <div className="milestone-grid">
                         {editedAnalysis.milestones.map((ms, idx) => (
                             <div
@@ -363,14 +385,24 @@ export default function AnalysisReview({ videoPath, onConfirm, onCancel }) {
                                         )}
                                         <div className="m-value">{ms.frame}</div>
                                     </div>
-                                    <button
-                                        className="edit-btn"
-                                        onClick={(e) => { e.stopPropagation(); setEditingIndex(idx); }}
-                                    >
-                                        <Edit2 size={14} />
-                                    </button>
+                                    <div className="milestone-actions">
+                                        <button
+                                            className="action-btn edit-btn"
+                                            onClick={(e) => { e.stopPropagation(); setEditingIndex(idx); }}
+                                            title="Edit Label"
+                                        >
+                                            <Edit2 size={14} />
+                                        </button>
+                                        <button
+                                            className="action-btn delete-btn"
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteMilestone(idx); }}
+                                            title="Delete Milestone"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="m-hint">Click to seek • Click label to rename</div>
+                                <div className="m-hint">Click card to seek</div>
                             </div>
                         ))}
                     </div>
@@ -481,8 +513,17 @@ export default function AnalysisReview({ videoPath, onConfirm, onCancel }) {
                 .m-value { font-size: 1.1rem; font-weight: 800; }
                 .m-hint { font-size: 0.6rem; color: #a855f7; margin-top: 2px; opacity: 0; transition: opacity 0.2s; }
                 .milestone-box:hover .m-hint { opacity: 1; }
-                .edit-btn { position: absolute; top: 4px; right: 4px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 2px; border-radius: 4px; opacity: 0.3; transition: all 0.2s; }
-                .edit-btn:hover { opacity: 1; background: var(--bg-secondary); color: white; }
+                
+                .milestone-actions { display: flex; flex-direction: column; gap: 4px; margin-left: 8px; }
+                .action-btn { background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 4px; border-radius: 4px; opacity: 0.5; transition: all 0.2s; display: flex; align-items: center; justify-content: center; }
+                .action-btn:hover { opacity: 1; background: var(--bg-secondary); color: white; }
+                .delete-btn:hover { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+
+                .card-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+                .card-label { margin-bottom: 0; }
+                .btn-icon-small { background: var(--bg-secondary); border: 1px solid var(--border-color); color: white; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
+                .btn-icon-small:hover { background: var(--accent-blue); border-color: var(--accent-blue); }
+
                 .edit-milestone-input { background: var(--bg-secondary); border: 1px solid #a855f7; border-radius: 4px; color: white; font-size: 0.65rem; padding: 2px 4px; width: 100%; }
                 
                 .analysis-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; }
@@ -490,6 +531,6 @@ export default function AnalysisReview({ videoPath, onConfirm, onCancel }) {
                 .field input { width: 100%; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; color: white; }
                 .explanation { margin-top: 12px; display: flex; gap: 8px; padding: 8px; background: rgba(251, 191, 36, 0.1); border-radius: 8px; color: #fbbf24; font-size: 0.75rem; }
             `}</style>
-        </div>
+        </div >
     );
 }

@@ -12,7 +12,8 @@ import argparse
 import json
 from pathlib import Path
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 # Load API Key
@@ -25,7 +26,7 @@ if not API_KEY:
     print("ERROR: GEMINI_API_KEY or GOOGLE_API_KEY not found in .env")
     exit(1)
 
-genai.configure(api_key=API_KEY)
+client = genai.Client(api_key=API_KEY)
 
 
 def analyze_video(video_path: str):
@@ -33,14 +34,14 @@ def analyze_video(video_path: str):
     
     # 1. Upload Video
     print("Uploading to Gemini...")
-    video_file = genai.upload_file(path=video_path)
+    video_file = client.files.upload(path=video_path)
     print(f"Upload complete: {video_file.name}")
     
     # Wait for processing
     while video_file.state.name == "PROCESSING":
         print('.', end='', flush=True)
         time.sleep(2)
-        video_file = genai.get_file(video_file.name)
+        video_file = client.files.get(name=video_file.name)
         
     if video_file.state.name == "FAILED":
         raise ValueError("Video processing failed.")
@@ -50,7 +51,6 @@ def analyze_video(video_path: str):
     # 2. Prompt for Analysis
     model_name = "models/gemini-3-flash-preview"
     print(f"Using model: {model_name}", flush=True)
-    model = genai.GenerativeModel(model_name=model_name)
     
     prompt = """
     Analyze this video of a robotic hand (or human hand) manipulating an object.
@@ -77,18 +77,26 @@ def analyze_video(video_path: str):
     """
     
     print("Requesting analysis...")
-    response = model.generate_content(
-        [video_file, prompt],
-        generation_config={"response_mime_type": "application/json"}
+    response = client.models.generate_content(
+        model=model_name,
+        contents=[video_file, prompt],
+        config=types.GenerateContentConfig(response_mime_type="application/json")
     )
     
     print("Analysis complete.")
-    print(response.text)
+    # print(response.text) # Reduce noise
     
-    # Clean up (optional, files auto-expire)
-    # genai.delete_file(video_file.name)
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text
+        if text.endswith("```"):
+            text = text.rsplit("\n", 1)[0]
     
-    return json.loads(response.text)
+    # Remove "json" prefix if it exists after splitting
+    if text.startswith("json"):
+        text = text[4:].strip()
+
+    return json.loads(text)
 
 
 if __name__ == "__main__":

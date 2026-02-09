@@ -17,13 +17,14 @@ from pydantic import BaseModel
 from vidreward.utils.storage import storage
 import subprocess
 import shutil
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+client = None
 if API_KEY:
-    genai.configure(api_key=API_KEY)
+    client = genai.Client(api_key=API_KEY)
 
 app = FastAPI(title="OVERFIT Robotics Iteration Dashboard API")
 
@@ -608,6 +609,94 @@ def update_analysis(task_name: str, update: AnalysisUpdate):
 
     return {"status": "updated", "task_name": task_name}
 
+@app.post("/api/analyze/{task_name}")
+def trigger_analysis(task_name: str):
+    """Trigger analysis for an existing video task"""
+    task_dir = Path("data") / task_name
+    
+    # Try common extensions
+    video_path = None
+    for ext in [".mp4", ".mov", ".avi"]:
+        p = task_dir / f"video{ext}"
+        if p.exists():
+            video_path = p
+            break
+            
+    if not video_path:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    job_id = job_queue.add_job(video=str(video_path), job_type="analyze", session_id=task_name)
+    return {"status": "queued", "job_id": job_id, "task_name": task_name}
+
+
+class ExperimentChatRequest(BaseModel):
+    task_name: str
+    message: str
+    history: List[dict] = []
+
+@app.post("/api/experiment/chat")
+async def experiment_chat_endpoint(req: ExperimentChatRequest):
+    """
+    Chat with context of the specific task (analysis + landmarks summary).
+    """
+    task_dir = Path("data") / req.task_name
+    if not task_dir.exists():
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Load Context
+    analysis = {}
+    analysis_path = task_dir / "analysis.json"
+    if analysis_path.exists():
+        with open(analysis_path) as f:
+            analysis = json.load(f)
+            
+    landmarks_summary = "No landmarks data found."
+    landmarks_path = task_dir / "landmarks.pkl"
+    if landmarks_path.exists():
+        try:
+            with open(landmarks_path, 'rb') as f:
+                lms_data = pickle.load(f)
+            if lms_data and len(lms_data) > 0:
+                num_frames = len(lms_data)
+                sample_keys = list(lms_data[0].keys())
+                landmarks_summary = f"Landmarks available for {num_frames} frames. Keys per frame: {sample_keys}"
+        except Exception as e:
+            landmarks_summary = f"Error reading landmarks: {str(e)}"
+
+    # Construct System Prompt
+    system_prompt = f"""You are an expert Robotics Experiment Designer. 
+    You help users design Reward Functions and Training Configurations for Reinforcement Learning.
+    
+    Context for Task '{req.task_name}':
+    - Analysis: {json.dumps(analysis, indent=2)}
+    - Mediapipe Data: {landmarks_summary}
+    
+    Your goal is to help the user write a 'reward_function.py' or 'training_config.yaml'.
+    Use the available landmarks and analysis milestones to define reward terms.
+    If the user asks for the reward function, provide a Python code block.
+    """
+
+    # Call Gemini
+    try:
+        if not client:
+            raise ValueError("Gemini Client not initialized (Missing API Key)")
+
+        chat = client.chats.create(
+            model='models/gemini-3-flash-preview',
+            history=[
+                {"role": "user" if msg["role"] == "user" else "model", "parts": [{"text": msg["content"]}]}
+                for msg in req.history
+            ]
+        )
+        
+        response = chat.send_message(system_prompt + "\n\nUser: " + req.message)
+        return {"response": response.text}
+        
+    except Exception as e:
+        print(f"Gemini Chat Error: {e}")
+        # Fallback if Gemini fails or not configured
+        return {"response": f"Error calling Gemini: {str(e)}. (Mock) I see you want to discuss {req.task_name}. The analysis shows {len(analysis.get('milestones', []))} milestones."}
+
 
 
 # --- Upload Feature ---
@@ -657,4 +746,4 @@ def get_train_status(task_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

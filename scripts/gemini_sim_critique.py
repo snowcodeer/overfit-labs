@@ -7,8 +7,8 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-import google.generativeai as genai
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,23 +18,23 @@ def setup_gemini():
     api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY not found in environment variables.")
-    genai.configure(api_key=api_key)
+    return genai.Client(api_key=api_key)
 
-def upload_to_gemini(path, mime_type=None):
+def upload_to_gemini(client, path, mime_type=None):
     """Uploads the given file to Gemini."""
-    file = genai.upload_file(path, mime_type=mime_type)
+    file = client.files.upload(path=path, config=types.UploadFileConfig(mime_type=mime_type))
     print(f"Uploaded file '{file.display_name}' as: {file.uri}")
     return file
 
-def wait_for_files_active(files):
+def wait_for_files_active(client, files):
     """Waits for the given files to be active."""
     print("Waiting for file processing...", end="")
     for name in (file.name for file in files):
-        file = genai.get_file(name)
+        file = client.files.get(name=name)
         while file.state.name == "PROCESSING":
             print(".", end="", flush=True)
             time.sleep(2)
-            file = genai.get_file(name)
+            file = client.files.get(name=name)
         if file.state.name != "ACTIVE":
             raise Exception(f"File {file.name} failed to process")
     print("...all files ready")
@@ -54,15 +54,16 @@ def run_replay(video_path, obj_scale, hand_scales, grasp_offset, output_path="ad
     return output_path
 
 class GeminiCritiqueAgent:
-    def __init__(self, model_name="models/gemini-1.5-flash"):
+    def __init__(self, client, model_name="models/gemini-1.5-flash"):
+        self.client = client
         self.model_name = model_name
-        self.generation_config = {
-            "temperature": 0.4,
-            "top_p": 0.95,
-            "top_k": 64,
-            "max_output_tokens": 8192,
-            "response_mime_type": "application/json",
-        }
+        self.generation_config = types.GenerateContentConfig(
+            temperature=0.4,
+            top_p=0.95,
+            top_k=64,
+            max_output_tokens=8192,
+            response_mime_type="application/json",
+        )
         self.system_prompt = """
         You are a Robotics Sim-to-Real Expert.
         
@@ -102,12 +103,6 @@ class GeminiCritiqueAgent:
         """
 
     def analyze(self, video_file, current_params):
-        model = genai.GenerativeModel(
-            model_name=self.model_name,
-            system_instruction=self.system_prompt,
-            generation_config=self.generation_config,
-        )
-        
         prompt = f"""
         Current Parameters:
         - obj_scale: {current_params['obj_scale']}
@@ -117,12 +112,16 @@ class GeminiCritiqueAgent:
         Analyze the video and output the JSON.
         """
         
-        response = model.generate_content([video_file, prompt])
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=[video_file, prompt],
+            config=self.generation_config.model_copy(update={"system_instruction": self.system_prompt}),
+        )
         print(f"Gemini Response: {response.text}")
         return json.loads(response.text)
 
 def main():
-    setup_gemini()
+    client = setup_gemini()
     parser = argparse.ArgumentParser()
     parser.add_argument("--video", default="data/pick-rubiks-cube.mp4")
     parser.add_argument("--iterations", type=int, default=3)
@@ -135,7 +134,7 @@ def main():
         "grasp_offset": [0.0, -0.08, 0.08]
     }
     
-    agent = GeminiCritiqueAgent(model_name="models/gemini-2.0-flash-exp") # Fast, multimodal
+    agent = GeminiCritiqueAgent(client, model_name="models/gemini-2.0-flash-exp") # Fast, multimodal
     
     for i in range(args.iterations):
         print(f"\n=== Iteration {i+1}/{args.iterations} ===")
@@ -152,8 +151,8 @@ def main():
         
         # 2. Upload Video
         print("Uploading to Gemini...")
-        video_file = upload_to_gemini(output_video, mime_type="video/mp4")
-        wait_for_files_active([video_file])
+        video_file = upload_to_gemini(client, output_video, mime_type="video/mp4")
+        wait_for_files_active(client, [video_file])
         
         # 3. Get Critique
         result = agent.analyze(video_file, current_params)

@@ -23,17 +23,6 @@ export default function VideosView({ onReviewAnalysis, onLaunchTraining }) {
         }
     };
 
-    const handleLaunchTraining = async (taskName) => {
-        try {
-            const res = await fetch(`http://localhost:8000/api/training/prepare/${taskName}`);
-            const config = await res.json();
-            setTrainingConfig(config);
-            setShowTrainingModal(true);
-        } catch (error) {
-            console.error('Failed to prepare training:', error);
-            alert('Failed to prepare training. Make sure the video is analyzed first.');
-        }
-    };
 
     const copyToClipboard = (text) => {
         navigator.clipboard.writeText(text);
@@ -125,7 +114,7 @@ export default function VideosView({ onReviewAnalysis, onLaunchTraining }) {
                                         </button>
                                         <button
                                             className="btn-action btn-secondary"
-                                            onClick={() => handleLaunchTraining(video.task_name)}
+                                            onClick={() => onLaunchTraining(video.task_name)}
                                         >
                                             <Terminal size={16} />
                                             Launch Training
@@ -136,16 +125,14 @@ export default function VideosView({ onReviewAnalysis, onLaunchTraining }) {
                                     <button
                                         className="btn-action btn-primary"
                                         onClick={async () => {
-                                            const formData = new FormData();
-                                            const blob = await fetch(video.video_url || `http://localhost:8000/data/${video.task_name}/video.mp4`).then(r => r.blob());
-                                            formData.append('file', blob, 'video.mp4');
                                             try {
-                                                const res = await fetch('http://localhost:8000/api/upload', {
-                                                    method: 'POST',
-                                                    body: formData
+                                                const res = await fetch(`http://localhost:8000/api/analyze/${video.task_name}`, {
+                                                    method: 'POST'
                                                 });
                                                 if (res.ok) {
                                                     fetchVideos();
+                                                } else {
+                                                    console.error('Analysis request failed');
                                                 }
                                             } catch (error) {
                                                 console.error('Failed to start analysis:', error);

@@ -30,4 +30,4 @@ python-dotenv
 fastapi
 uvicorn
 # AI & Generative
-google-generativeai
+google-genai
