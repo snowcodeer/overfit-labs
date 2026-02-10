@@ -1,14 +1,32 @@
-# Ignore everything, whitelist only what server needs
-*
+# Exclude heavy/unnecessary files from Docker build
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.git/
+.gitignore
+.env
+.vscode/
+.idea/
+*.log
+*.pkl
+*.zip
+*.mp4
+venv/
+node_modules/
 
-# Include only API server files
-!requirements-prod.txt
-!backend/**
-!vidreward/**
+# Exclude local data (served from S3)
+data/
+runs/
 
-# Exclude from included dirs
-**/__pycache__
-**/*.pyc
-**/*.pkl
-**/*.zip
-**/*.mp4
+# Exclude frontend & scripts (not needed in API server)
+dashboard/
+scripts/
+*.ipynb
+*.md
