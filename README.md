@@ -2,6 +2,8 @@
 
 OVERFIT is an end-to-end pipeline for teaching complex robotic tasks to an Adroit Shadow Hand using a single real-world video demonstration. It leverages **Gemini 2.0** for video analysis, task understanding, and automated reward tuning, combined with **Stable Baselines3 (TD3)** for Residual Reinforcement Learning.
 
+> **Note:** This project is best run locally for full functionality (training, video analysis, evaluation). The cloud-hosted web app is for **demonstration purposes only** - it provides read-only access to experiment data stored in S3 but cannot run training or analysis scripts.
+
 ## Features
 
 - **Single-Video Learning**: Extract task structure from one demonstration video
