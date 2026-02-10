@@ -22,7 +22,7 @@ def setup_gemini():
 
 def upload_to_gemini(client, path, mime_type=None):
     """Uploads the given file to Gemini."""
-    file = client.files.upload(path=path, config=types.UploadFileConfig(mime_type=mime_type))
+    file = client.files.upload(file=path, config=types.UploadFileConfig(mime_type=mime_type))
     print(f"Uploaded file '{file.display_name}' as: {file.uri}")
     return file
 

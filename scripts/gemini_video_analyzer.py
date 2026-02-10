@@ -31,10 +31,11 @@ client = genai.Client(api_key=API_KEY)
 
 def analyze_video(video_path: str):
     print(f"Analyzing video: {video_path}")
-    
+
     # 1. Upload Video
     print("Uploading to Gemini...")
-    video_file = client.files.upload(path=video_path)
+    # The google.genai SDK uses 'file' parameter, not 'path'
+    video_file = client.files.upload(file=video_path)
     print(f"Upload complete: {video_file.name}")
     
     # Wait for processing

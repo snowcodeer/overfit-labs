@@ -29,5 +29,6 @@ boto3
 python-dotenv
 fastapi
 uvicorn
+python-multipart
 # AI & Generative
 google-genai
