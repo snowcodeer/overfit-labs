@@ -1,8 +1,7 @@
-# syntax=docker/dockerfile:1.4
 # Server build with video analysis (no RL/training deps)
 FROM python:3.11-slim
 
-# System deps for video processing (ffmpeg, opencv)
+# System deps for video processing
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libglib2.0-0 \
@@ -10,12 +9,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install Python deps (cached unless requirements-server.txt changes)
+# Install Python deps (layer cached if requirements unchanged)
 COPY requirements-server.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements-server.txt
+RUN pip install --no-cache-dir -r requirements-server.txt
 
-# Copy everything
+# Copy app code
 COPY . .
 
 EXPOSE 8000
