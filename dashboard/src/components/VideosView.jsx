@@ -14,7 +14,7 @@ export default function VideosView({ onReviewAnalysis, onLaunchTraining }) {
 
     const fetchVideos = async () => {
         try {
-            const res = await fetch('${API_BASE}/videos/library');
+            const res = await fetch(`${API_BASE}/videos/library`);
             const data = await res.json();
             setVideos(data.videos || []);
         } catch (error) {

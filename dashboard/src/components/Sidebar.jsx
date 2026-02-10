@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { Database, Video, ChevronRight, ChevronDown, Folder, Globe, Upload, Loader2 } from 'lucide-react';
+import { Database, Video, ChevronRight, ChevronDown, Folder, Globe, Upload, Loader2, PanelLeftClose } from 'lucide-react';
 import { API_BASE } from '../utils/api';
 
-const Sidebar = ({ runs, selectedRun, onSelectRun, loading, onRunsUpdated }) => {
+const Sidebar = ({ runs, selectedRun, onSelectRun, loading, onRunsUpdated, onCollapse }) => {
     const [expandedGroups, setExpandedGroups] = useState({});
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState(null);
@@ -106,6 +106,25 @@ const Sidebar = ({ runs, selectedRun, onSelectRun, loading, onRunsUpdated }) => 
                             {uploading ? 'Uploading...' : 'Upload'}
                         </button>
                         <span className="badge-count">{runs.length}</span>
+                        {onCollapse && (
+                            <button
+                                onClick={onCollapse}
+                                title="Hide sidebar"
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '4px',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    color: 'var(--text-secondary)',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <PanelLeftClose size={16} />
+                            </button>
+                        )}
                     </div>
                 </div>
                 {uploadError && (

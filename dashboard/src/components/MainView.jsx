@@ -129,7 +129,7 @@ Ask me anything about this experiment, or request changes like:
             // or use run.config.task_name if available
             const taskName = run.config?.task_name || run.id.replace(/_\d{8}_\d{6}.*$/, '');
 
-            const res = await fetch('${API_BASE}/experiment/chat', {
+            const res = await fetch(`${API_BASE}/experiment/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -163,7 +163,7 @@ Ask me anything about this experiment, or request changes like:
             const videoPath = `data/${run.group}/video.mp4`;
             const resumePath = `runs/${run.group}/${run.id}`;
 
-            const response = await fetch('${API_BASE}/train/resume', {
+            const response = await fetch(`${API_BASE}/train/resume`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -215,7 +215,7 @@ Ask me anything about this experiment, or request changes like:
             // Extract task name from run.id
             const taskName = run.config?.task_name || run.id.replace(/_\d{8}_\d{6}.*$/, '');
 
-            const res = await fetch('${API_BASE}/experiment/fork', {
+            const res = await fetch(`${API_BASE}/experiment/fork`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -446,7 +446,7 @@ Ask me anything about this experiment, or request changes like:
                                             </div>
                                             <div className="video-player">
                                                 <video key={selectedEvalVideo} controls autoPlay muted loop>
-                                                    <source src={`${API_HOST}/runs/${run.group}/${run.id}/${selectedEvalVideo}`} type="video/mp4" />
+                                                    <source src={`${API_HOST}/runs/${run.group.replace(' (Cloud)', '')}/${run.id}/${selectedEvalVideo}`} type="video/mp4" />
                                                 </video>
                                             </div>
                                         </div>
@@ -514,6 +514,26 @@ Ask me anything about this experiment, or request changes like:
             </div>
 
             <style>{`
+                /* Minimal Scrollbar */
+                .experiment-main * {
+                    scrollbar-width: thin;
+                    scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+                }
+                .experiment-main *::-webkit-scrollbar {
+                    width: 6px;
+                    height: 6px;
+                }
+                .experiment-main *::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .experiment-main *::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.15);
+                    border-radius: 3px;
+                }
+                .experiment-main *::-webkit-scrollbar-thumb:hover {
+                    background: rgba(255, 255, 255, 0.25);
+                }
+
                 .experiment-main {
                     padding: 20px;
                     height: 100%;

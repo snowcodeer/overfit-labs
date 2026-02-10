@@ -2,13 +2,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Sidebar from './Sidebar';
 import MainView from './MainView';
-import { Activity } from 'lucide-react';
+import { Activity, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { fetchRuns } from '../utils/api';
 
 export default function ExperimentHub({ sessionId }) {
     const [runs, setRuns] = useState([]);
     const [selectedRun, setSelectedRun] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const selectedRunRef = useRef(null); // Fix stale closure in interval
 
     // Sync ref
@@ -46,15 +47,43 @@ export default function ExperimentHub({ sessionId }) {
 
     return (
         <div className="experiment-hub" style={{ display: 'flex', height: 'calc(100vh - 64px)' }}>
-            <Sidebar
-                runs={runs}
-                selectedRun={selectedRun}
-                onSelectRun={setSelectedRun}
-                loading={loading}
-                sessionId={sessionId}
-                onRunsUpdated={loadRuns}
-            />
-            <main className="hub-content" style={{ flex: 1, overflow: 'auto', background: 'var(--bg-primary)' }}>
+            {!sidebarCollapsed && (
+                <Sidebar
+                    runs={runs}
+                    selectedRun={selectedRun}
+                    onSelectRun={setSelectedRun}
+                    loading={loading}
+                    sessionId={sessionId}
+                    onRunsUpdated={loadRuns}
+                    onCollapse={() => setSidebarCollapsed(true)}
+                />
+            )}
+            <main className="hub-content" style={{ flex: 1, overflow: 'auto', background: 'var(--bg-primary)', position: 'relative' }}>
+                {sidebarCollapsed && (
+                    <button
+                        onClick={() => setSidebarCollapsed(false)}
+                        style={{
+                            position: 'absolute',
+                            top: '12px',
+                            left: '12px',
+                            zIndex: 10,
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            padding: '8px',
+                            cursor: 'pointer',
+                            color: 'var(--text-secondary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontSize: '0.8rem'
+                        }}
+                        title="Show experiments"
+                    >
+                        <PanelLeftOpen size={16} />
+                        <span>Experiments ({runs.length})</span>
+                    </button>
+                )}
                 {selectedRun ? (
                     <MainView run={selectedRun} />
                 ) : (

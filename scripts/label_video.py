@@ -112,22 +112,29 @@ def label_video(video_path, analysis_path=None, output_path=None):
     import subprocess
     import shutil
 
-    if shutil.which("ffmpeg"):
+    ffmpeg_path = shutil.which("ffmpeg")
+    print(f"ffmpeg found at: {ffmpeg_path}")
+
+    if ffmpeg_path:
         temp_path = str(output_path) + ".temp.mp4"
         shutil.move(str(output_path), temp_path)
         try:
-            subprocess.run([
+            result = subprocess.run([
                 "ffmpeg", "-y", "-i", temp_path,
                 "-c:v", "libx264", "-preset", "fast", "-crf", "23",
                 "-pix_fmt", "yuv420p",  # Required for browser compatibility
                 "-movflags", "+faststart",  # Enable streaming
                 str(output_path)
-            ], check=True, capture_output=True)
+            ], check=True, capture_output=True, text=True)
             Path(temp_path).unlink()  # Remove temp file
             print(f"Re-encoded to H.264 for browser playback")
         except subprocess.CalledProcessError as e:
-            print(f"ffmpeg re-encode failed: {e.stderr.decode()}")
+            print(f"ffmpeg re-encode failed: {e.stderr}")
             shutil.move(temp_path, str(output_path))  # Restore original
+        except Exception as e:
+            print(f"ffmpeg error: {e}")
+            if Path(temp_path).exists():
+                shutil.move(temp_path, str(output_path))
     else:
         print("Warning: ffmpeg not found, video may not play in browser")
 

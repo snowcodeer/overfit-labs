@@ -29,7 +29,7 @@ export default function ExperimentDesign({ taskName, onBack }) {
     useEffect(() => {
         const fetchVideoUrl = async () => {
             try {
-                const res = await fetch('${API_BASE}/videos/library');
+                const res = await fetch(`${API_BASE}/videos/library`);
                 const data = await res.json();
                 const video = data.videos?.find(v => v.task_name === taskName);
                 if (video?.video_url) {
@@ -239,7 +239,7 @@ Ask me anything about the reward design!${generatedNote}`
                 const residualCode = codeTabs.find(t => t.title === 'residual.py')?.code || '';
                 const rewardCode = codeTabs.find(t => t.title === 'reward.py')?.code || '';
 
-                const uploadRes = await fetch('${API_BASE}/experiment/upload-training', {
+                const uploadRes = await fetch(`${API_BASE}/experiment/upload-training`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -299,7 +299,7 @@ Or download the files below:`,
         setIsLoading(true);
 
         try {
-            const res = await fetch('${API_BASE}/experiment/chat', {
+            const res = await fetch(`${API_BASE}/experiment/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

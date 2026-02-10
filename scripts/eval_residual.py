@@ -142,16 +142,31 @@ def evaluate(args):
     env.close()
     
     # Save Video
+    temp_path = os.path.join(args.run_dir, "eval_video_temp.mp4")
     output_path = os.path.join(args.run_dir, "eval_video.mp4")
     print(f"Saving video to {output_path}...")
-    
+
     height, width, layers = frames[0].shape
-    out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (width, height))
-    
+    out = cv2.VideoWriter(temp_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (width, height))
+
     for frame in frames:
         out.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-    
+
     out.release()
+
+    # Re-encode to H.264 for browser playback
+    import subprocess
+    try:
+        subprocess.run([
+            'ffmpeg', '-y', '-i', temp_path,
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+            '-pix_fmt', 'yuv420p', output_path
+        ], check=True, capture_output=True)
+        os.remove(temp_path)
+        print("Re-encoded to H.264 for browser playback")
+    except Exception as e:
+        print(f"FFmpeg re-encoding failed: {e}, using original")
+        os.rename(temp_path, output_path)
     
     # Save metrics if requested
     if args.save_metrics:
