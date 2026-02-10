@@ -183,7 +183,11 @@ Ask me anything about this experiment, or request changes like:
     };
 
     const getRunVideo = () => {
-        if (files.videos.length > 0) {
+        if (files.videos?.length > 0) {
+            // Use presigned S3 URL if available
+            if (files.video_urls?.[files.videos[0]]) {
+                return files.video_urls[files.videos[0]];
+            }
             return getFileUrl(`runs/${run.group}/${run.id}/${files.videos[0]}`);
         }
         return null;
@@ -446,7 +450,7 @@ Ask me anything about this experiment, or request changes like:
                                             </div>
                                             <div className="video-player">
                                                 <video key={selectedEvalVideo} controls autoPlay muted loop>
-                                                    <source src={`${API_HOST}/runs/${run.group.replace(' (Cloud)', '')}/${run.id}/${selectedEvalVideo}`} type="video/mp4" />
+                                                    <source src={files.video_urls?.[selectedEvalVideo] || `${API_HOST}/runs/${run.group.replace(' (Cloud)', '')}/${run.id}/${selectedEvalVideo}`} type="video/mp4" />
                                                 </video>
                                             </div>
                                         </div>

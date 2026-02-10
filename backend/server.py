@@ -45,7 +45,7 @@ if not RUNS_DIR.exists():
 
 # Serve the runs directory as static files for video streaming
 app.mount("/runs", StaticFiles(directory="runs"), name="runs")
-app.mount("/data", StaticFiles(directory="data"), name="data")
+# Note: /data is handled by the proxy endpoint below to support S3 fallback
 
 REPLAYS_DIR = Path("data/replays")
 ANALYSIS_DIR = Path("data/analysis")
@@ -66,6 +66,44 @@ class RunInfo(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     current_analysis: dict
+
+
+# --- Data File Proxy (serves from local or S3) ---
+@app.get("/data/{file_path:path}")
+async def serve_data_file(file_path: str):
+    """Serve data files from local filesystem or S3."""
+    from fastapi.responses import FileResponse, StreamingResponse
+    import mimetypes
+
+    local_path = Path("data") / file_path
+
+    # Try local first
+    if local_path.exists():
+        media_type, _ = mimetypes.guess_type(str(local_path))
+        return FileResponse(local_path, media_type=media_type)
+
+    # Fall back to S3
+    if storage.enabled:
+        s3_key = f"data/{file_path}"
+        try:
+            response = storage.s3.get_object(Bucket=storage.bucket_name, Key=s3_key)
+            media_type, _ = mimetypes.guess_type(file_path)
+
+            def iterfile():
+                for chunk in response['Body'].iter_chunks(chunk_size=8192):
+                    yield chunk
+
+            return StreamingResponse(
+                iterfile(),
+                media_type=media_type or 'application/octet-stream',
+                headers={"Content-Length": str(response['ContentLength'])}
+            )
+        except Exception as e:
+            print(f"S3 fetch failed for {s3_key}: {e}")
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+    raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
 
 @app.get("/api/runs", response_model=List[RunInfo])
 def list_runs():
@@ -160,17 +198,38 @@ def get_run_history(group: str, run_id: str):
 
 @app.get("/api/run/{group}/{run_id}/files")
 def get_run_files(group: str, run_id: str):
-    run_path = RUNS_DIR / group / run_id
-    if not run_path.exists():
-        raise HTTPException(status_code=404, detail="Run not found")
+    """Always fetch files from S3"""
+    clean_group = group.replace(" (Cloud)", "")
 
-    files = {
-        "videos": [f.name for f in run_path.glob("*.mp4")],
-        "plots": [f.name for f in (run_path / "plots").glob("*.png")] if (run_path / "plots").exists() else [],
-        "code": [f.name for f in (run_path / "code").glob("*.py")] if (run_path / "code").exists() else [],
-        "checkpoints": [f.name for f in run_path.glob("*.zip") if "checkpoint" in f.name.lower() or "td3" in f.name.lower()],
-    }
-    return files
+    if not storage.enabled:
+        raise HTTPException(status_code=503, detail="Cloud storage not configured")
+
+    try:
+        prefix = f"runs/{clean_group}/{run_id}/"
+        response = storage.s3.list_objects_v2(Bucket=storage.bucket_name, Prefix=prefix)
+
+        files = {"videos": [], "plots": [], "code": [], "checkpoints": [], "video_urls": {}, "plot_urls": {}}
+        for obj in response.get('Contents', []):
+            key = obj['Key']
+            filename = key.split('/')[-1]
+            if not filename:
+                continue
+
+            if filename.endswith('.mp4'):
+                files["videos"].append(filename)
+                files["video_urls"][filename] = storage.get_url(key)
+            elif '/plots/' in key and filename.endswith('.png'):
+                files["plots"].append(filename)
+                files["plot_urls"][filename] = storage.get_url(key)
+            elif '/code/' in key and filename.endswith('.py'):
+                files["code"].append(filename)
+            elif filename.endswith('.zip') and ('checkpoint' in filename.lower() or 'td3' in filename.lower()):
+                files["checkpoints"].append(filename)
+
+        return files
+    except Exception as e:
+        print(f"Error listing cloud files: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to list cloud files: {e}")
 
 
 @app.get("/api/run/{group}/{run_id}/code")
@@ -562,53 +621,58 @@ def get_eval_results(group: str, run_id: str):
 # --- Videos Library API ---
 @app.get("/api/videos/library")
 def get_videos_library():
-    """Get list of all uploaded videos with their analysis status"""
-    data_dir = Path("data")
+    """Get list of all uploaded videos with their analysis status - always from S3"""
+    if not storage.enabled:
+        raise HTTPException(status_code=503, detail="Cloud storage not configured")
+
     videos = []
-    
-    if not data_dir.exists():
-        return {"videos": []}
-    
-    for task_dir in data_dir.iterdir():
-        if not task_dir.is_dir() or task_dir.name.startswith('.'):
-            continue
-        
-        video_file = task_dir / "video.mp4"
-        analysis_file = task_dir / "analysis.json"
-        
-        if not video_file.exists():
-            continue
-        
-        # Determine status
-        status = "none"
-        task_type = None
-        if analysis_file.exists():
-            status = "completed"
+
+    try:
+        # List all task directories in data/ prefix
+        response = storage.s3.list_objects_v2(Bucket=storage.bucket_name, Prefix="data/", Delimiter='/')
+        task_prefixes = response.get('CommonPrefixes', [])
+
+        for prefix in task_prefixes:
+            task_name = prefix['Prefix'].strip('/').split('/')[-1]
+            if task_name.startswith('.'):
+                continue
+
+            # Check for video.mp4 in this task
+            video_key = f"data/{task_name}/video.mp4"
+            analysis_key = f"data/{task_name}/analysis.json"
+
+            # Check if video exists
             try:
-                with open(analysis_file) as f:
-                    analysis_data = json.load(f)
-                    task_type = analysis_data.get("task_type")
+                storage.s3.head_object(Bucket=storage.bucket_name, Key=video_key)
+            except:
+                continue  # No video file
+
+            # Check analysis status
+            status = "none"
+            task_type = None
+            try:
+                analysis_obj = storage.s3.get_object(Bucket=storage.bucket_name, Key=analysis_key)
+                analysis_data = json.loads(analysis_obj['Body'].read().decode('utf-8'))
+                status = "completed"
+                task_type = analysis_data.get("task_type")
             except:
                 pass
-        
-        # Generate S3 URL if storage is enabled, otherwise use None (frontend handles local URL)
-        video_url = None
-        if storage.enabled:
-            # S3 URL format
-            video_url = storage.get_url(f"data/{task_dir.name}/video.mp4")
-        
-        videos.append({
-            "task_name": task_dir.name,
-            "path": str(video_file),  # Keep local path for backend operations
-            "video_url": video_url,   # URL for frontend to fetch from
-            "status": status,
-            "task_type": task_type,
-            "created_at": video_file.stat().st_mtime
-        })
-    
-    # Sort by creation time (newest first)
-    videos.sort(key=lambda x: x["created_at"], reverse=True)
-    
+
+            video_url = storage.get_url(video_key)
+
+            videos.append({
+                "task_name": task_name,
+                "path": f"data/{task_name}/video.mp4",
+                "video_url": video_url,
+                "status": status,
+                "task_type": task_type,
+                "created_at": 0  # S3 doesn't preserve creation time easily
+            })
+
+    except Exception as e:
+        print(f"Error listing videos from S3: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to list videos: {e}")
+
     return {"videos": videos}
 
 @app.delete("/api/videos/{task_name}")
