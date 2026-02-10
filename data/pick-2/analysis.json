@@ -1,0 +1,32 @@
+{
+    "object_name": "3x3x2 puzzle cube",
+    "object_description": "A rectangular puzzle block with green, orange, and black segments, resembling a Rubik's cube variation.",
+    "task_type": "pick",
+    "milestones": [
+        {
+            "label": "approach",
+            "frame": 0,
+            "description": "The hand moves toward the puzzle block on the table."
+        },
+        {
+            "label": "grasp",
+            "frame": 32,
+            "description": "The fingers and thumb make firm contact and grip the sides of the puzzle block."
+        },
+        {
+            "label": "lift",
+            "frame": 48,
+            "description": "The hand raises the puzzle block off the wooden surface."
+        },
+        {
+            "label": "transport",
+            "frame": 110,
+            "description": "The hand holds the puzzle block in mid-air, adjusting its position."
+        },
+        {
+            "label": "release",
+            "frame": 210,
+            "description": "The hand sets the puzzle block down and releases its grip, moving away from the object."
+        }
+    ]
+}

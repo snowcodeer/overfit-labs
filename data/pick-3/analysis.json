@@ -1,0 +1,32 @@
+{
+    "object_name": "3x3x2 cuboid puzzle",
+    "object_description": "a rectangular puzzle cube with orange, green, and yellow colored faces",
+    "task_type": "slide",
+    "milestones": [
+        {
+            "label": "approach",
+            "frame": 0,
+            "description": "The hand begins moving toward the cuboid puzzle."
+        },
+        {
+            "label": "grasp",
+            "frame": 92,
+            "description": "The hand makes contact and grips the cuboid puzzle."
+        },
+        {
+            "label": "lift",
+            "frame": 138,
+            "description": "The hand slides the puzzle laterally across the wooden table."
+        },
+        {
+            "label": "release",
+            "frame": 210,
+            "description": "The hand releases the puzzle at the new position."
+        },
+        {
+            "label": "retract",
+            "frame": 240,
+            "description": "The hand moves away from the puzzle."
+        }
+    ]
+}

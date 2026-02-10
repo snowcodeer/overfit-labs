@@ -1,0 +1,17 @@
+{
+    "object_name": "rectangular_puzzle_toy",
+    "object_description": "A rectangular cuboid puzzle toy (similar to a 1x2x3 Rubik's cube) with red and green tiles on a black body.",
+    "grasp_frame": 32,
+    "release_frame": 76,
+    "task_type": "slide",
+    "milestones": [
+        {
+            "label": "grasp",
+            "frame": 32
+        },
+        {
+            "label": "release",
+            "frame": 76
+        }
+    ]
+}

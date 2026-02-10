@@ -1,0 +1,37 @@
+{
+  "success_rate": 0.0,
+  "avg_reward": 45.28969265157094,
+  "lift_rate": 0.0,
+  "avg_steps": 200.0,
+  "avg_dist_to_target": 0.0,
+  "episodes": [
+    {
+      "episode": 1,
+      "reward": 47.09999999999987,
+      "success": false,
+      "lifted": false,
+      "steps": 200,
+      "dist_to_target": 0.0
+    },
+    {
+      "episode": 2,
+      "reward": 32.49999999999994,
+      "success": false,
+      "lifted": false,
+      "steps": 200,
+      "dist_to_target": 0.0
+    },
+    {
+      "episode": 3,
+      "reward": 56.269077954713,
+      "success": false,
+      "lifted": false,
+      "steps": 200,
+      "dist_to_target": 0.0
+    }
+  ],
+  "milestone_progress": {
+    "lifted": false,
+    "at_target": false
+  }
+}

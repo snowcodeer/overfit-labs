@@ -1,0 +1,32 @@
+{
+    "object_name": "Rubik's cube",
+    "object_description": "a multi-colored 3x3x3 puzzle cube",
+    "task_type": "throw",
+    "milestones": [
+        {
+            "label": "hold",
+            "frame": 0,
+            "description": "The hand is holding the Rubik's cube in a stationary position."
+        },
+        {
+            "label": "release",
+            "frame": 45,
+            "description": "The hand releases the cube into the air for a toss."
+        },
+        {
+            "label": "apex",
+            "frame": 65,
+            "description": "The Rubik's cube reaches the peak of its flight trajectory."
+        },
+        {
+            "label": "catch",
+            "frame": 88,
+            "description": "The hand makes contact with and catches the falling cube."
+        },
+        {
+            "label": "stabilize",
+            "frame": 105,
+            "description": "The hand secures the cube firmly after the catch."
+        }
+    ]
+}

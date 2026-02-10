@@ -149,17 +149,10 @@ cython_debug/
 .idea/
 .vscode/
 
-# Data & Results
-data/
+# Data & Results (large files tracked with Git LFS)
+# data/ - tracked with LFS
+# runs/ - tracked with LFS
 results/
 validation_results/
 wandb/
-*.mp4
-*.png
-*.npy
-*.pt
-*.yaml
-*.xml
-runs/
 tensorboard_logs/
-nul

@@ -1,0 +1,68 @@
+{
+    "object_name": "blue eraser",
+    "object_description": "a blue rectangular foam eraser with the brand name DAHLE on it",
+    "task_type": "slide",
+    "milestones": [
+        {
+            "label": "approach",
+            "frame": 0,
+            "description": "Hand begins moving towards the blue eraser."
+        },
+        {
+            "label": "contact",
+            "frame": 18,
+            "description": "The fingers make first contact with the sides of the eraser."
+        },
+        {
+            "label": "grasp",
+            "frame": 30,
+            "description": "The hand has a firm grip on the eraser, preparing to move it."
+        },
+        {
+            "label": "start_slide",
+            "frame": 45,
+            "description": "The hand begins sliding the eraser across the gray surface."
+        },
+        {
+            "label": "stop_slide",
+            "frame": 115,
+            "description": "The eraser reaches its new position and movement stops."
+        },
+        {
+            "label": "release",
+            "frame": 128,
+            "description": "The fingers let go of the eraser."
+        },
+        {
+            "label": "retreat",
+            "frame": 150,
+            "description": "The hand moves away from the object and out of the frame."
+        }
+    ],
+    "eval_code": {
+        "success_criteria": [
+            {
+                "name": "is_contacted",
+                "description": "Hand makes contact with the object",
+                "condition": "n_contacts > 0"
+            },
+            {
+                "name": "reached_target",
+                "description": "The object has been moved to a new location",
+                "condition": "np.linalg.norm(obj_final_pos - obj_start_pos) > 0.1"
+            }
+        ],
+        "metrics": [
+            {
+                "name": "slide_distance",
+                "description": "Total distance the object was moved",
+                "formula": "np.linalg.norm(obj_pos_at_release - obj_pos_at_grasp)"
+            },
+            {
+                "name": "movement_smoothness",
+                "description": "Measure of how steady the slide was",
+                "formula": "1 / np.std(obj_velocity_during_slide)"
+            }
+        ]
+    }
+}

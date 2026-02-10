@@ -1,0 +1,32 @@
+{
+    "object_name": "2x2x3 puzzle block",
+    "object_description": "A rectangular twisty puzzle with yellow and blue faces sitting on a wooden surface.",
+    "task_type": "rotate",
+    "milestones": [
+        {
+            "label": "approach",
+            "frame": 0,
+            "description": "The hand is positioned above the puzzle block."
+        },
+        {
+            "label": "grasp",
+            "frame": 12,
+            "description": "Fingers make contact with the top layer of the puzzle."
+        },
+        {
+            "label": "rotate",
+            "frame": 21,
+            "description": "The hand performs a quick flicking motion to rotate the top layer of the puzzle."
+        },
+        {
+            "label": "release",
+            "frame": 31,
+            "description": "The hand releases contact with the puzzle."
+        },
+        {
+            "label": "retract",
+            "frame": 41,
+            "description": "The hand moves slightly back to its starting position."
+        }
+    ]
+}
