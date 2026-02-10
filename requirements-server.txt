@@ -1,0 +1,22 @@
+# Server Dependencies (API + Video Analysis)
+# No RL/training deps (torch, mujoco, gymnasium, stable-baselines3)
+
+# API Server
+fastapi
+uvicorn
+python-multipart
+pydantic
+
+# Cloud Storage (S3)
+boto3
+
+# AI (Gemini for video analysis)
+google-genai
+
+# Video Analysis
+mediapipe
+opencv-python-headless
+numpy
+
+# Utilities
+python-dotenv

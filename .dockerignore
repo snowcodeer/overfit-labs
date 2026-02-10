@@ -25,8 +25,7 @@ node_modules/
 data/
 runs/
 
-# Exclude frontend & scripts (not needed in API server)
+# Exclude frontend (not needed in API server)
 dashboard/
-scripts/
 *.ipynb
 *.md

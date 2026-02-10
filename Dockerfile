@@ -1,15 +1,21 @@
 # syntax=docker/dockerfile:1.4
-# Lightweight production API server - no ML dependencies
+# Server build with video analysis (no RL/training deps)
 FROM python:3.11-slim
+
+# System deps for video processing (ffmpeg, opencv)
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install deps FIRST (cached unless requirements-prod.txt changes)
-COPY requirements-prod.txt .
+# Install Python deps (cached unless requirements-server.txt changes)
+COPY requirements-server.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements-prod.txt
+    pip install -r requirements-server.txt
 
-# Copy only server code (see .dockerignore)
+# Copy everything
 COPY . .
 
 EXPOSE 8000
