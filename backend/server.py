@@ -10,7 +10,7 @@ import uuid
 import time
 import threading
 from typing import List, Optional, Dict
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -1000,9 +1000,12 @@ async def fork_experiment(req: ForkExperimentRequest):
 
 
 @app.get("/api/experiment/notebook/{task_name}")
-def generate_colab_notebook(task_name: str):
+def generate_colab_notebook(task_name: str, request: Request):
     """Generate a Colab-ready Jupyter notebook for the task."""
     from fastapi.responses import Response
+
+    # Get the backend URL from the request
+    backend_url = str(request.base_url).rstrip('/')
 
     task_dir = Path("data") / task_name
     if not task_dir.exists():
@@ -1051,8 +1054,7 @@ def generate_colab_notebook(task_name: str):
                 "metadata": {},
                 "source": [
                     "# Install dependencies\n",
-                    "!pip install -q gymnasium gymnasium-robotics stable-baselines3 mujoco mediapy\n",
-                    "!pip install -q google-generativeai  # For Gemini integration"
+                    "!pip install -q gymnasium gymnasium-robotics stable-baselines3 mujoco mediapy"
                 ],
                 "execution_count": None,
                 "outputs": []
@@ -1074,7 +1076,7 @@ def generate_colab_notebook(task_name: str):
                 "source": [
                     "# Download task data from your backend\n",
                     f"TASK_NAME = '{task_name}'\n",
-                    f"BACKEND_URL = 'http://YOUR_BACKEND_URL:8000'  # Replace with your backend URL\n\n",
+                    f"BACKEND_URL = '{backend_url}'\n\n",
                     "import requests\n",
                     "from pathlib import Path\n\n",
                     "# Create data directory\n",
