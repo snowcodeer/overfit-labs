@@ -1,24 +1,14 @@
-venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-.git/
-.gitignore
-.env
-.vscode/
-.idea/
-*.log
-data/
-runs/
-node_modules/
-dashboard/node_modules/
-dashboard/dist/
-*.md
-!README.md
+# Ignore everything, whitelist only what server needs
+*
+
+# Include only API server files
+!requirements-prod.txt
+!backend/**
+!vidreward/**
+
+# Exclude from included dirs
+**/__pycache__
+**/*.pyc
+**/*.pkl
+**/*.zip
+**/*.mp4

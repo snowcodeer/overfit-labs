@@ -1,0 +1,17 @@
+# Production API Dependencies (Render)
+# No training/ML dependencies - training runs locally
+
+# API Server
+fastapi
+uvicorn
+python-multipart
+pydantic
+
+# Cloud Storage (S3)
+boto3
+
+# AI (Gemini for video analysis)
+google-genai
+
+# Utilities
+python-dotenv
