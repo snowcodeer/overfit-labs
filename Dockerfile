@@ -1,13 +1,13 @@
 # Multi-stage build for production deployment
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
+    libxrender1 \
     libgomp1 \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
