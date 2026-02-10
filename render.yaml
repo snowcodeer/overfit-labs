@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: overfit-backend
+    runtime: docker
+    repo: https://github.com/snowcodeer/overfit-labs
+    plan: free
+    healthCheckPath: /api/runs
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: BLOB_BUCKET_NAME
+        sync: false
+      - key: BLOB_ACCESS_KEY
+        sync: false
+      - key: BLOB_SECRET_KEY
+        sync: false
+      - key: BLOB_ENDPOINT_URL
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONPATH
+        value: "/app"

@@ -1,93 +1,162 @@
 # OVERFIT: One Video Episode Reward Function from Imitation Tracking
 
-OVERFIT is an end-to-end pipeline for teaching complex robotic tasks to an Adroit Shadow Hand using a single real-world video demonstration. It leverages Gemini for task understanding and Stable Baselines3 (TD3) for Residual Reinforcement Learning.
+OVERFIT is an end-to-end pipeline for teaching complex robotic tasks to an Adroit Shadow Hand using a single real-world video demonstration. It leverages **Gemini 2.0** for video analysis, task understanding, and automated reward tuning, combined with **Stable Baselines3 (TD3)** for Residual Reinforcement Learning.
+
+## Features
+
+- **Single-Video Learning**: Extract task structure from one demonstration video
+- **Gemini-Powered Analysis**: Automatic milestone detection, grasp frame identification, and failure mode analysis
+- **Interactive Dashboard**: Real-time experiment monitoring with video labeling and chat interface
+- **Cloud-Hybrid Architecture**: Train locally, monitor remotely via S3-compatible storage
+- **Automated Reward Tuning**: Self-improving reward functions through Gemini critique loops
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Installation
-Ensure you have a Python 3.10+ environment.
 
-```powershell
+Requires Python 3.10+ with CUDA support recommended for training.
+
+```bash
 # Create and activate virtual environment
 python -m venv venv
+
+# Windows
 venv\Scripts\activate
+# Linux/Mac
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
 ### 2. Configuration
-Rename `.env.template` to `.env` and add your API keys:
-*   `GEMINI_API_KEY`: For video analysis and critiques.
-*   `BLOB_ACCESS_KEY` & `BLOB_SECRET_KEY`: For cloud synchronization (optional).
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+# Required - Gemini API for video analysis and critiques
+GEMINI_API_KEY=your-gemini-api-key
+
+# Optional - Cloud storage for remote dashboard access
+BLOB_BUCKET_NAME=your-bucket-name
+BLOB_ACCESS_KEY=your-access-key
+BLOB_SECRET_KEY=your-secret-key
+BLOB_ENDPOINT_URL=https://your-endpoint.com  # For R2, Spaces, MinIO
+```
+
+### 3. Launch the Dashboard
+
+**Terminal 1: FastAPI Backend**
+```bash
+python backend/server.py
+```
+
+**Terminal 2: React Frontend**
+```bash
+cd dashboard
+npm install
+npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) to access the dashboard.
 
 ---
 
-## 🛠️ Key Commands
+## Training
 
-### A. RL Training
-Start a new training session with default rewards (v3):
-```powershell
+### Basic Training
+Start a training session with a demonstration video:
+```bash
 python scripts/train_grasp_residual.py --video data/pick-3.mp4 --timesteps 500000
 ```
 
-#### Dynamic Configuration
-OVERFIT automatically generates reward hyperparameters based on the video analysis (e.g., `grasp_frame`, `task_type`). You can override these defaults by editing `data/video_analysis.json` or by using a specific reward version:
-
-```powershell
+### Reward Versions
+OVERFIT includes multiple reward configurations:
+```bash
 # v1: Original basic reward
 # v2: High-reward/Unstable
 # v3: Stabilized expert heuristics (Default)
 python scripts/train_grasp_residual.py --video data/pick-3.mp4 --reward-version v3
 ```
 
-### B. Automated Iteration (Gemini RL Tuner)
-OVERFIT can automatically improve its own reward function by analyzing training plots and detecting failure modes (Stalling, Dropping, etc.).
-```powershell
-# Analyze a run and rewrite the reward for the next iteration
-python scripts/gemini_rl_tuner.py --run-dir runs/residual_pick3/pick-3_...
-```
-
-#### Custom Reward Logic
-Override the entire reward logic with an external `.py` file:
-```powershell
+### Custom Reward Logic
+Use an external reward file:
+```bash
 python scripts/train_grasp_residual.py --video data/pick-3.mp4 --reward-file experiments/v4_custom.py
 ```
 
-### C. Launching the Dashboard
-The dashboard requires two processes running simultaneously.
-
-**Terminal 1: FastAPI Backend**
-```powershell
-python scripts/server.py
+### Automated Iteration (Gemini RL Tuner)
+Automatically improve reward functions by analyzing training curves:
+```bash
+python scripts/gemini_rl_tuner.py --run-dir runs/residual_pick3/pick-3_...
 ```
-
-**Terminal 2: React Frontend**
-```powershell
-cd dashboard
-npm run dev
-```
-Open [http://localhost:5173](http://localhost:5173) to view your experiments.
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
-*   `scripts/`: Core execution scripts (Training, Server, Evaluation).
-    *   `reward_registry.py`: Central store for named reward versions (v1, v2, v3).
-*   `dashboard/`: React + Vite frontend source code.
-*   `vidreward/`: Internal library for extraction, retargeting, and utilities.
-    *   `phases/`: Phase-aware reward logic.
-    *   `utils/storage.py`: Cloud-hybrid blob storage bridge.
-*   `runs/`: Local storage for training artifacts (models, plots, and history).
-*   `data/`: Source videos and generated trajectory data.
+```
+├── backend/              # FastAPI server
+│   └── server.py         # API endpoints, Gemini chat, video serving
+├── dashboard/            # React 19 + Vite + Tailwind frontend
+│   └── src/components/   # UI components (ExperimentHub, VideosView, etc.)
+├── scripts/              # Core execution scripts
+│   ├── train_grasp_residual.py   # Main RL training loop
+│   ├── train_cli.py              # CLI training interface
+│   ├── gemini_rl_tuner.py        # Automated reward improvement
+│   ├── gemini_video_analyzer.py  # Video analysis pipeline
+│   ├── gemini_sim_critique.py    # Simulation critique system
+│   ├── label_video.py            # Video labeling utilities
+│   └── reward_registry.py        # Named reward versions (v1, v2, v3)
+├── vidreward/            # Core library
+│   ├── extraction/       # Video feature extraction
+│   ├── retargeting/      # Motion retargeting to robot
+│   ├── rewards/          # Reward function implementations
+│   ├── phases/           # Phase-aware reward logic
+│   └── utils/            # Storage, helpers
+├── data/                 # Videos, trajectories, analysis results
+├── runs/                 # Training artifacts (models, plots, history)
+└── outputs/              # Generated outputs
+```
 
 ---
 
-## ☁️ Cloud-Hybrid Mode
-VidReward is designed for a hybrid workflow:
-1.  **Local Worker**: Run heavy RL training on your local GPU.
-2.  **Cloud Dashboard**: Host the Dashboard in the cloud.
-3.  **Auto-Sync**: The training script automatically pushes progress to your configured Blob Storage, making results visible in the cloud dashboard instantly.
+## Dashboard Features
+
+- **Experiment Hub**: Browse and compare training runs
+- **Videos View**: Upload and manage demonstration videos
+- **Analysis Review**: Inspect Gemini's video analysis with milestone markers
+- **Experiment Design**: Configure new training experiments
+- **Live Charts**: Real-time reward and success rate visualization
+- **Chat Interface**: Interactive labeling with Gemini assistance
+
+---
+
+## Cloud-Hybrid Mode
+
+OVERFIT supports a distributed workflow using S3-compatible storage (AWS S3, Cloudflare R2, DigitalOcean Spaces, MinIO):
+
+1. **Local Training**: Run GPU-intensive RL training on your local machine. The training script uploads checkpoints and plots to your configured bucket.
+2. **Remote Dashboard**: Deploy the dashboard on a cloud server with the same S3 credentials. It fetches run data from the bucket on-demand.
+
+This lets you monitor training progress from anywhere without exposing your local machine.
+
+---
+
+## Docker
+
+```bash
+docker-compose up --build
+```
+
+---
+
+## Tech Stack
+
+- **RL**: Stable Baselines3, MuJoCo, Gymnasium-Robotics
+- **AI**: Gemini 2.0 (google-genai), PyTorch, MediaPipe, OpenCLIP
+- **Backend**: FastAPI, Uvicorn, Pydantic
+- **Frontend**: React 19, Vite, Tailwind CSS, Recharts
+- **Storage**: Boto3 (S3-compatible)
