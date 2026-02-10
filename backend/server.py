@@ -2054,7 +2054,7 @@ Task Type: {task_type}
 
 Implements the core residual RL paradigm:
     action = base_policy(s) + alpha * residual_policy(s)
-             ↑ from BC           ↑ from TD3
+             ^ from BC           ^ from TD3
 
 The base policy (BC) gets us close to the demo.
 The residual policy (RL) learns to correct errors.
