@@ -1,6 +1,6 @@
 # OVERFIT: One Video Episode Reward Function from Imitation Tracking
 
-OVERFIT is an end-to-end pipeline for teaching complex robotic tasks to an Adroit Shadow Hand using a single real-world video demonstration. It leverages **Gemini 2.0** for video analysis, task understanding, and automated reward tuning, combined with **Stable Baselines3 (TD3)** for Residual Reinforcement Learning.
+OVERFIT is an end-to-end pipeline for teaching complex robotic tasks to an Adroit Shadow Hand using a single real-world video demonstration. It leverages **Gemini 3.0** for video analysis, task understanding, and automated reward tuning, combined with **Stable Baselines3 (TD3)** for Residual Reinforcement Learning.
 
 ## Features
 
